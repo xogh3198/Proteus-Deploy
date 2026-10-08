@@ -1,0 +1,20 @@
+{
+  "models": {
+    "resnet-50": {
+      "enabled": true,
+      "model_id": "microsoft/resnet-50",
+      "revision": "34c2154c194f829b11125337b98c8f5f9965ff19",
+      "accuracy": null,
+      "accuracy_source": null,
+      "accuracy_dataset": null
+    },
+    "resnet-18": {
+      "enabled": false,
+      "model_id": "microsoft/resnet-18",
+      "revision": "main",
+      "accuracy": null,
+      "accuracy_source": null,
+      "accuracy_dataset": null
+    }
+  }
+}

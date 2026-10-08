@@ -71,6 +71,19 @@ To complete the local installation, you need to obtain a Gurobi license as follo
 Once you have followed the instructions above successfully, your local installation is complete. You can now follow the instructions [here](EXAMPLES.md) to run experiments with Proteus and the comparison baselines on various traces using the simulator.
 
 
+## Standalone real-GPU port (experimental, single GPU)
+
+See [GPU_SERVING.md](GPU_SERVING.md) for the independent PyTorch/Hugging Face
+runtime and the `deploy/docker/proteus-docker.sh` command interface. It connects
+a single-GPU/single-application reduction of the MILP and a wall-clock port of
+accscale batching to real CUDA model execution. It does not import, start, or
+inherit an INFaaS runtime/image; caches and results are separate by default.
+The default one-model configuration cannot demonstrate accuracy scaling.
+Multiple-model selection requires comparable offline accuracy measurements.
+This is an experimental port, not the paper's full cluster implementation.
+The original simulator and instructions above remain unchanged. Local tests
+use a real Gurobi solver and fake GPU; V100 Docker verification remains pending.
+
 ## Citation
 
 If you use this artifact or find it helpful, please cite our paper.

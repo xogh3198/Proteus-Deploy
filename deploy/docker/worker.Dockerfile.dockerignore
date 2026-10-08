@@ -1,0 +1,12 @@
+# Only the standalone package is needed. Do not send credentials, licenses,
+# model weights, simulator traces or local virtual environments to the builder.
+**
+!proteus_realtime/
+!proteus_realtime/**
+proteus_realtime/**/__pycache__/
+!deploy/
+!deploy/docker/
+!deploy/docker/worker.Dockerfile
+!deploy/docker/worker.Dockerfile.dockerignore
+!deploy/docker/models.json
+!deploy/docker/requirements-gpu.txt

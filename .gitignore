@@ -2,3 +2,12 @@
 *__pycache__*
 *gurobi.lic
 *.pdf
+
+# Standalone real-GPU port: settings, measurements, weights and local tests.
+/data/
+/inputs/
+/deploy/docker/generated/
+/deploy/docker/proteus-docker.local.env
+/deploy/docker/models.local.json
+/.test-venv/
+/.pytest_cache/
