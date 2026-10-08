@@ -91,7 +91,22 @@ def settings(env_file=None):
     return values
 
 
-def compose_document(values):
+def container_user():
+    """Honor the selected daemon without switching its context or config.
+
+    Rootless container UID 0 maps to the login user; using the host UID there
+    would map to a subordinate UID and prevent writes to host-owned bind mounts.
+    """
+    security = json.loads(subprocess.check_output(
+        ["docker", "info", "--format", "{{json .SecurityOptions}}"], text=True))
+    if not isinstance(security, list) or not all(isinstance(v, str) for v in security):
+        raise ValueError("Cannot determine Docker security mode; refusing to guess container UID")
+    if "name=rootless" in security:
+        return "0:0"
+    return f"{getattr(os, 'getuid', lambda: 0)()}:{getattr(os, 'getgid', lambda: 0)()}"
+
+
+def compose_document(values, user=None):
     environment = {key: values[key] for key in [
         "GPU_TYPE", "MODEL_NAME", "APPLICATION", "WARMUP_QUERIES", "CPU_THREADS",
         "RPC_THREADS", "MAX_QUEUE_SIZE", "SLO_MS", "BATCH_SIZES",
@@ -112,7 +127,7 @@ def compose_document(values):
         environment["GRB_LICENSE_FILE"] = "/license/gurobi.lic"
     return {"services": {"worker": {
         "image": values["WORKER_IMAGE"], "container_name": values["CONTAINER_NAME"],
-        "user": f"{getattr(os, 'getuid', lambda: 0)()}:{getattr(os, 'getgid', lambda: 0)()}",
+        "user": user if user is not None else f"{getattr(os, 'getuid', lambda: 0)()}:{getattr(os, 'getgid', lambda: 0)()}",
         "command": ["proteus_realtime.server"], "environment": environment,
         "ports": [f"{values['BIND_ADDRESS']}:{values['PORT']}:9000"], "volumes": volumes,
         "networks": {"default": {"aliases": ["proteus-worker"]}},
@@ -145,7 +160,7 @@ def check_gpu_idle(values):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["settings", "gen", "get", "gpus", "idle"])
+    parser.add_argument("command", choices=["settings", "gen", "get", "gpus", "idle", "user"])
     parser.add_argument("key", nargs="?")
     parser.add_argument("--env")
     args = parser.parse_args()
@@ -162,11 +177,13 @@ def main():
         for path in (values["MODEL_DIR"], values["EVAL_DIR"],
                      str(Path(values["DATA_DIR"]) / "results"), str(Path(values["DATA_DIR"]) / "profiles")):
             Path(path).mkdir(parents=True, exist_ok=True)
-        (directory / "docker-compose.yml").write_text(json.dumps(compose_document(values), indent=2), encoding="utf-8")
+        (directory / "docker-compose.yml").write_text(json.dumps(compose_document(values, container_user()), indent=2), encoding="utf-8")
         (directory / "resolved-settings.json").write_text(json.dumps(values, indent=2), encoding="utf-8")
         print("wrote", directory / "docker-compose.yml")
     elif args.command == "idle":
         check_gpu_idle(values)
+    elif args.command == "user":
+        print(container_user())
     else:
         subprocess.run(["nvidia-smi", "--query-gpu=index,name,memory.total,uuid", "--format=csv"], check=True)
 

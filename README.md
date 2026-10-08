@@ -1,4 +1,16 @@
 # Proteus
+
+## 실제 GPU에서 Docker로 실행하기
+
+`docker/v1` 브랜치의 **[한국어 Docker 실행 가이드](docker.md)**를 따라 실행하세요.
+기본 구성은 **V100 한 장 · ResNet-50 · FP32 · SLO 200ms**입니다.
+하나의 스크립트로 GPU·모델 설정, 이미지 빌드, 가중치 다운로드, 워커 실행,
+프로파일링, gRPC 요청, 테스트와 종료를 진행합니다. 모델 학습은 하지 않습니다.
+
+이 경로는 독립 GPU 런타임에 단일 GPU용 MILP·적응형 배치를 연결한 실험적 포트입니다.
+INFaaS 서비스에 의존하지 않으며, 논문의 전체 클러스터 재현과는 구분합니다.
+원본 시뮬레이터와 아래 원본 안내는 그대로 유지합니다.
+
 Proteus is an ML inference serving system for resource-constrained compute clusters that proposes a technique to handle workload spikes called "accuracy scaling". Accuracy scaling leverages the flexibility of ML models to adjust the accuracy of served inference requests to adapt to increased load, as opposed to traditional hardware scaling that adapts by adding hardware.
 
 Proteus is set to appear in ASPLOS 2024. You can find it [here](https://guanh01.github.io/files/2024proteus.pdf).
@@ -34,7 +46,7 @@ We strongly recommend using Method 2 if you want to use Proteus or the simulator
 
 Proteus uses the Gurobi optimization software to solve its MILP formulation. Although Gurobi requires a full-usage license, we have prepared a [Docker image](https://hub.docker.com/r/sohaibahmad759/proteus) with a pre-installed trial license to allow quick testing. However, we strongly recommend that you obtain a Gurobi license if you want to use Proteus.
 
-Follow the instructions [here](DOCKER.md) to run Proteus using Docker.
+Follow the instructions [here](SIMULATOR_DOCKER.md) to run the original Proteus simulator using Docker.
 
 ## Method 2: Local installation
 
@@ -72,6 +84,8 @@ Once you have followed the instructions above successfully, your local installat
 
 
 ## Standalone real-GPU port (experimental, single GPU)
+
+For setup and commands, start with the [Korean Docker quickstart](docker.md).
 
 See [GPU_SERVING.md](GPU_SERVING.md) for the independent PyTorch/Hugging Face
 runtime and the `deploy/docker/proteus-docker.sh` command interface. It connects

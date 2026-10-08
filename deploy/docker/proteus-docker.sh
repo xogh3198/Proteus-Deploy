@@ -13,6 +13,12 @@ if [[ -z "${PROTEUS_ENV:-}" ]]; then
 fi
 export PROTEUS_ENV
 get() { python3 -m proteus_realtime.deployment get "$1"; }
+container_user() { python3 -m proteus_realtime.deployment user; }
+run_container() {
+  local selected_user
+  selected_user="$(container_user)"
+  docker run --user "$selected_user" "$@"
+}
 WORKER_IMAGE="$(get WORKER_IMAGE)"
 MODEL_DIR="$(get MODEL_DIR)"
 MODEL_REGISTRY="$(get MODEL_REGISTRY)"
@@ -56,23 +62,28 @@ client() {
     mounts+=(-v "$image:/in/image.jpg:ro")
     image_args=(--image /in/image.jpg)
   fi
-  docker run --rm --pull=never --user "$(id -u):$(id -g)" --network "$NETWORK_NAME" \
+  run_container --rm --pull=never --network "$NETWORK_NAME" \
     "${mounts[@]}" "$WORKER_IMAGE" proteus_realtime.client "$command" \
     --controller proteus-worker:9000 --output /results "${image_args[@]}" "$@"
 }
 
 usage() {
   printf '%s\n' \
-    "Standalone Proteus: one GPU/application, real MILP + deadline-based adaptive batching." \
-    "  $0 settings | gpus | build | doctor | sample | download [--models NAME ...]" \
-    "  $0 seed --from /existing/HF_HOME [--models resnet-50]" \
+    "Proteus 독립 GPU 실행: MILP + 적응형 배치 (단일 GPU/애플리케이션)." \
+    "기본 순서: gpus → settings → build → download → sample → doctor → up → register → query → down" \
+    "설정: deploy/docker/proteus-docker.local.env / 안내: docker.md" \
+    "현재 터미널의 Docker를 사용합니다. context 변경, sudo, 공용 설정 변경을 하지 않습니다." \
+    "  $0 gpus | settings                           # GPU 목록 / 적용 설정" \
+    "  $0 build | doctor                            # 이미지 빌드 / CUDA·Gurobi 확인" \
+    "  $0 download [--models resnet-50] | sample     # 가중치 / 테스트 JPEG 준비" \
+    "  $0 seed --from /existing/HF_HOME [--models resnet-50]  # 가중치 복사" \
     "  $0 up | state [--watch 2] | logs [--follow] | ps | down" \
-    "  $0 register [--models NAME ...] [--image IMAGE] [--trials 30]" \
-    "  $0 query imagenet IMAGE 200 [-n 11]" \
-    "  $0 test [IMAGE] [--warm-requests 10]  # fixed1 diagnostic, restores policy" \
-    "  $0 policy-test [IMAGE]  # verifies actual batch>1 and MILP plan" \
-    "  $0 bench [IMAGE] --rate 10 --duration 30 --concurrency 64" \
-    "  $0 evaluate --manifest manifest.json  # files inside configured EVAL_DIR" \
+    "  $0 register [--models resnet-50] [--image IMAGE] [--trials 30]  # GPU 프로파일" \
+    "  $0 query imagenet IMAGE 200 [-n 11]          # gRPC 반복 요청" \
+    "  $0 test [IMAGE] [--warm-requests 10]         # 고정 배치 1 cold/warm 진단 후 정책 복원" \
+    "  $0 policy-test [IMAGE]                      # 실제 배치 > 1과 MILP 연결 검사" \
+    "  $0 bench [IMAGE] --rate 10 --duration 30 --distribution uniform" \
+    "  $0 evaluate --manifest manifest.json        # EVAL_DIR 안의 라벨 검증셋" \
     "  $0 mode --mode fixed|proteus | reset"
 }
 
@@ -91,14 +102,14 @@ case "$command" in
     image_required
     python3 -m proteus_realtime.deployment idle
     mkdir -p "$MODEL_DIR"
-    docker run --rm --pull=never --user "$(id -u):$(id -g)" --gpus "device=$GPU" \
+    run_container --rm --pull=never --gpus "device=$GPU" \
       "${CONFIG_MOUNT[@]}" "${LICENSE_MOUNTS[@]}" -v "$MODEL_DIR:/models:ro" \
       "$WORKER_IMAGE" proteus_realtime.doctor
     ;;
   download)
     image_required
     mkdir -p "$MODEL_DIR"
-    docker run --rm --pull=never --user "$(id -u):$(id -g)" \
+    run_container --rm --pull=never \
       "${CONFIG_MOUNT[@]}" -v "$MODEL_DIR:/models" \
       -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 \
       "$WORKER_IMAGE" proteus_realtime.download weights "$@"
@@ -110,7 +121,7 @@ case "$command" in
     shift 2
     [[ "$source_dir" != "$MODEL_DIR" ]] || { echo "Source and destination must differ." >&2; exit 1; }
     mkdir -p "$MODEL_DIR"
-    docker run --rm --pull=never --user "$(id -u):$(id -g)" \
+    run_container --rm --pull=never \
       "${CONFIG_MOUNT[@]}" -v "$source_dir:/source:ro" -v "$MODEL_DIR:/models" \
       "$WORKER_IMAGE" proteus_realtime.download seed --source /source "$@"
     ;;
@@ -122,7 +133,7 @@ case "$command" in
       cp -- "$(get INPUT_IMAGE)" "$ROOT/inputs/test-dog.jpg"
     else
       image_required
-      docker run --rm --pull=never --user "$(id -u):$(id -g)" -v "$ROOT/inputs:/inputs" \
+      run_container --rm --pull=never -v "$ROOT/inputs:/inputs" \
         "$WORKER_IMAGE" proteus_realtime.download sample
     fi
     ;;
@@ -131,7 +142,7 @@ case "$command" in
     python3 -m proteus_realtime.deployment idle
     python3 -m proteus_realtime.deployment gen
     "${COMPOSE[@]}" up -d
-    echo "Waiting for GPU worker. On a fresh setup, run register before policy requests."
+    echo "GPU 워커 준비를 기다립니다. 처음 실행할 때는 요청 전에 register로 프로파일링하세요."
     for ((attempt=1; attempt<=90; attempt++)); do
       status="$(docker inspect --format '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER_NAME" 2>/dev/null || true)"
       if [[ "$status" == 'running|healthy' ]]; then client state ""; exit 0; fi
@@ -181,7 +192,7 @@ case "$command" in
   down)
     [[ -f "$HERE/generated/docker-compose.yml" ]] || { echo "Nothing generated."; exit 0; }
     "${COMPOSE[@]}" down
-    echo "Proteus stopped; standalone weights, profiles and results retained."
+    echo "Proteus 컨테이너를 종료했습니다. 가중치·프로파일·결과는 보존합니다."
     ;;
   *) usage; exit 1 ;;
 esac

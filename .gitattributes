@@ -1,0 +1,2 @@
+# Keep the Linux deployment script runnable after a Windows checkout.
+deploy/docker/proteus-docker.sh text eol=lf

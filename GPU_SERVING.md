@@ -1,5 +1,8 @@
 # Proteus 독립 GPU 실행 — 0.2.0
 
+처음 실행할 때는 [한국어 Docker 실행 가이드](docker.md)를 따라가세요.
+이 문서는 전환 절차, 정책 구현 범위와 상세 측정 기준을 설명합니다.
+
 ## 구현 범위
 
 원본 `core/`, `algorithms/`, `run.py`, 시뮬레이터 Dockerfile과 requirements는
@@ -20,6 +23,9 @@
 전처리/모델 로딩 오버랩, INFaaS native QueryOnline(:50052)은 구현 범위 밖이다.
 
 ## 1. 이전 0.1.0 설치에서 전환
+
+`docker/v1`을 새로 받은 경우에는 아래 증분 패치를 적용하지 않고 [기본 실행 순서](docker.md)로 진행합니다.
+아래 전환 절차는 이전 0.1.0 bootstrap을 설치해 둔 경우에만 해당합니다.
 
 **기존 스크립트가 남아 있을 때 먼저** 이전 Proteus 워커를 중지한다.
 새 버전은 Compose 프로젝트를 proteus-standalone으로 분리하므로 이전 프로젝트를
