@@ -11,7 +11,9 @@ def main():
     sources = verify_sources()
     backend = GpuRuntime()
     try:
-        checkpoint = Path(os.environ.get("HF_HOME", "/models")) / "hub/models--microsoft--resnet-50/snapshots/34c2154c194f829b11125337b98c8f5f9965ff19"
+        item = backend.registry[backend.model_name]
+        checkpoint = Path(os.environ.get("HF_HOME", "/models")) / (
+            "hub/models--" + item["model_id"].replace("/", "--") + "/snapshots/" + item["revision"])
         if not checkpoint.is_dir():
             raise ValueError("Pinned checkpoint cache is missing; run download first")
         print(json.dumps({"cuda_math_check": "passed", "checkpoint_directory": str(checkpoint),

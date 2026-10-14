@@ -22,6 +22,9 @@ run_container() {
 WORKER_IMAGE="$(get WORKER_IMAGE)"
 MODEL_DIR="$(get MODEL_DIR)"
 MODEL_REGISTRY="$(get MODEL_REGISTRY)"
+MODEL_ENV=(-e "MODEL_NAME=$(get MODEL_NAME)" -e "MODEL_ID=$(get MODEL_ID)" \
+  -e "MODEL_REVISION=$(get MODEL_REVISION)" -e "GPU_TYPE=$(get GPU_TYPE)" \
+  -e "CPU_THREADS=$(get CPU_THREADS)" -e "WARMUP_QUERIES=$(get WARMUP_QUERIES)")
 DATA_DIR="$(get DATA_DIR)"
 GPU="$(get GPU)"
 APPLICATION="$(get APPLICATION)"
@@ -103,14 +106,14 @@ case "$command" in
     python3 -m proteus_realtime.deployment idle
     mkdir -p "$MODEL_DIR"
     run_container --rm --pull=never --gpus "device=$GPU" \
-      "${CONFIG_MOUNT[@]}" "${LICENSE_MOUNTS[@]}" -v "$MODEL_DIR:/models:ro" \
+      "${CONFIG_MOUNT[@]}" "${MODEL_ENV[@]}" "${LICENSE_MOUNTS[@]}" -v "$MODEL_DIR:/models:ro" \
       "$WORKER_IMAGE" proteus_realtime.doctor
     ;;
   download)
     image_required
     mkdir -p "$MODEL_DIR"
     run_container --rm --pull=never \
-      "${CONFIG_MOUNT[@]}" -v "$MODEL_DIR:/models" \
+      "${CONFIG_MOUNT[@]}" "${MODEL_ENV[@]}" -v "$MODEL_DIR:/models" \
       -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 \
       "$WORKER_IMAGE" proteus_realtime.download weights "$@"
     ;;
@@ -122,7 +125,7 @@ case "$command" in
     [[ "$source_dir" != "$MODEL_DIR" ]] || { echo "Source and destination must differ." >&2; exit 1; }
     mkdir -p "$MODEL_DIR"
     run_container --rm --pull=never \
-      "${CONFIG_MOUNT[@]}" -v "$source_dir:/source:ro" -v "$MODEL_DIR:/models" \
+      "${CONFIG_MOUNT[@]}" "${MODEL_ENV[@]}" -v "$source_dir:/source:ro" -v "$MODEL_DIR:/models" \
       "$WORKER_IMAGE" proteus_realtime.download seed --source /source "$@"
     ;;
   sample)
@@ -162,12 +165,12 @@ case "$command" in
     client query "$image" --model "$model" --slo "$slo" "$@"
     ;;
   test|bench|policy-test)
-    image="$ROOT/inputs/test-dog.jpg"
+    image="$(get INPUT_IMAGE)"
     if [[ $# -gt 0 && "$1" != -* ]]; then image="$1"; shift; fi
     client "$command" "$image" --model "$APPLICATION" --slo "$SLO_MS" "$@"
     ;;
   register|profile)
-    image="$ROOT/inputs/test-dog.jpg"
+    image="$(get INPUT_IMAGE)"
     trials="$(get PROFILE_TRIALS)"
     models=()
     while [[ $# -gt 0 ]]; do

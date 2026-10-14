@@ -1,12 +1,30 @@
 """Explicit checkpoint identity and independently supplied offline accuracy."""
 import json
 import math
+import os
+import re
 from pathlib import Path
 
 
-def load_registry(path):
+def load_registry(path, model_name=None, model_id=None, revision=None):
     data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
     models = data.get("models", {})
+    # A pinned env override selects ONE checkpoint without editing the registry.
+    # Empty explicit arguments disable ambient env lookup in host-side settings.
+    model_id = os.environ.get("MODEL_ID", "") if model_id is None else model_id
+    revision = os.environ.get("MODEL_REVISION", "") if revision is None else revision
+    if model_id:
+        model_name = model_name or os.environ.get("MODEL_NAME", "")
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", model_name):
+            raise ValueError("MODEL_NAME must be a simple name for the env checkpoint")
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*/[a-zA-Z0-9][a-zA-Z0-9_.-]*", model_id):
+            raise ValueError("MODEL_ID must be a Hugging Face owner/model ID")
+        if not re.fullmatch(r"[0-9a-f]{40}", revision):
+            raise ValueError("MODEL_REVISION must be a pinned 40-character commit for MODEL_ID")
+        models = {model_name: {"enabled": True, "model_id": model_id, "revision": revision,
+                    "accuracy": None, "accuracy_source": None, "accuracy_dataset": None}}
+    elif revision:
+        raise ValueError("MODEL_REVISION requires MODEL_ID; clear both to use MODEL_REGISTRY")
     if not isinstance(models, dict) or not models:
         raise ValueError("Registry must contain a nonempty models object")
     for name, item in models.items():

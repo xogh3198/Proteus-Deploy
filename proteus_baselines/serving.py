@@ -61,6 +61,9 @@ class BaselineExecutor:
         if row.get("fingerprint") != self.backend.fingerprint() or row.get("slo_ms") != self.slo:
             self.error = "Profile fingerprint/SLO mismatch; run register again"
             return
+        if set(row.get("batches", {})) != {str(size) for size in self.batches}:
+            self.error = "Profile batch candidates changed; run register again"
+            return
         self.profile_data = row
         self._install_native()
 

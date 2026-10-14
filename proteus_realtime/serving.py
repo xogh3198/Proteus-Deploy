@@ -65,6 +65,11 @@ class ProteusExecutor:
             self.policy_error = "GPU/runtime/checkpoint fingerprint changed; run register again"
             return
         self.profiles = {n: row for n, row in data.get("profiles", {}).items() if n in self.backend.enabled}
+        if any(set(row.get("batches", {})) != {str(size) for size in self.batches}
+               for row in self.profiles.values()):
+            self.profiles = {}
+            self.policy_error = "Profile batch candidates changed; run register again"
+            return
         self.measured_accuracy = data.get("accuracy", {})
 
     def _save_profiles(self):

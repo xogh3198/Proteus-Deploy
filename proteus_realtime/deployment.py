@@ -80,7 +80,8 @@ def settings(env_file=None):
             raise ValueError(f"Invalid {key}")
     for key in ("MODEL_REGISTRY", "MODEL_DIR", "DATA_DIR", "INPUT_IMAGE", "EVAL_DIR"):
         values[key] = _path(values[key], ROOT)
-    registry = load_registry(values["MODEL_REGISTRY"])
+    registry = load_registry(values["MODEL_REGISTRY"], values["MODEL_NAME"],
+                             values["MODEL_ID"], values["MODEL_REVISION"])
     if values["MODEL_NAME"] not in registry or not registry[values["MODEL_NAME"]].get("enabled", True):
         raise ValueError("MODEL_NAME must be enabled in MODEL_REGISTRY")
     if values["GUROBI_LICENSE_FILE"]:
@@ -108,7 +109,7 @@ def container_user():
 
 def compose_document(values, user=None):
     environment = {key: values[key] for key in [
-        "GPU_TYPE", "MODEL_NAME", "APPLICATION", "WARMUP_QUERIES", "CPU_THREADS",
+        "GPU_TYPE", "MODEL_NAME", "MODEL_ID", "MODEL_REVISION", "APPLICATION", "WARMUP_QUERIES", "CPU_THREADS",
         "RPC_THREADS", "MAX_QUEUE_SIZE", "SLO_MS", "BATCH_SIZES",
         "ALLOCATION_INTERVAL", "EWMA_ALPHA", "INITIAL_RATE", "DEADLINE_GUARD_MS"]}
     environment.update({"HF_HOME": "/models", "TORCH_HOME": "/models",

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import BASELINES
 from proteus_realtime.deployment import read_env
+from proteus_realtime.registry import load_registry
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_SOURCES = {
@@ -53,23 +54,24 @@ def settings(baseline, root=ROOT):
             raise ValueError("Positive finite setting required: " + key)
     if values["ALLOW_GPU_SHARING"] not in {"0", "1"}:
         raise ValueError("ALLOW_GPU_SHARING must be 0 or 1")
-    if values["GPU_TYPE"] != "v100":
-        raise ValueError("This matched experiment requires GPU_TYPE=v100")
+    if not re.fullmatch(r"[a-zA-Z0-9_.-]+", values["GPU_TYPE"]):
+        raise ValueError("GPU_TYPE must be a simple device type name")
     if not re.fullmatch(r"proteus-baseline-worker:[a-zA-Z0-9_.-]+", values["WORKER_IMAGE"]):
         raise ValueError("Use a separate proteus-baseline-worker tag; do not overwrite original deployment images")
-    if values["MODEL_NAME"] != "resnet-50" or values["APPLICATION"] != "imagenet":
-        raise ValueError("This experiment is explicitly the singleton ResNet-50/ImageNet scope")
+    if values["APPLICATION"] != "imagenet":
+        raise ValueError("This adapter supports one ImageNet classification application")
     sizes = [int(value) for value in values["BATCH_SIZES"].split(",")]
     if not sizes or sizes != sorted(set(sizes)) or sizes[0] != 1 or any(b > 64 or b & (b - 1) for b in sizes):
         raise ValueError("BATCH_SIZES must be sorted powers of two <=64, including 1")
     for key in ("DATA_ROOT", "INPUT_IMAGE", "MODEL_REGISTRY"):
         path = Path(values[key]).expanduser()
         values[key] = str((root / path).resolve() if not path.is_absolute() else path.resolve())
-    registry = json.loads(Path(values["MODEL_REGISTRY"]).read_text(encoding="utf-8-sig"))["models"]
-    if set(registry) != {"resnet-50"} or registry["resnet-50"].get("enabled") is not True or \
-       registry["resnet-50"].get("model_id") != "microsoft/resnet-50" or \
-       registry["resnet-50"].get("revision") != "34c2154c194f829b11125337b98c8f5f9965ff19":
-        raise ValueError("Use the pinned singleton baseline registry, not a multi-model/unpinned original registry")
+    registry = load_registry(values["MODEL_REGISTRY"], values["MODEL_NAME"],
+                             values["MODEL_ID"], values["MODEL_REVISION"])
+    enabled = {name: item for name, item in registry.items() if item.get("enabled", True)}
+    if set(enabled) != {values["MODEL_NAME"]} or not re.fullmatch(
+            r"[0-9a-f]{40}", enabled[values["MODEL_NAME"]].get("revision", "")):
+        raise ValueError("Use exactly one enabled pinned singleton model matching MODEL_NAME")
     values.update({"BASELINE": baseline, "ROOT": str(root), "PORT": str(19081 + BASELINES.index(baseline)),
         "PROJECT": "proteus-baseline-" + baseline, "NETWORK_NAME": "proteus-baseline-" + baseline,
         "CONTAINER_NAME": "proteus-baseline-" + baseline,
@@ -80,7 +82,7 @@ def settings(baseline, root=ROOT):
 
 
 def compose_document(c, user):
-    env = {key: c[key] for key in ("BASELINE", "GPU_TYPE", "MODEL_NAME", "APPLICATION", "SLO_MS",
+    env = {key: c[key] for key in ("BASELINE", "GPU_TYPE", "MODEL_NAME", "MODEL_ID", "MODEL_REVISION", "APPLICATION", "SLO_MS",
            "CPU_THREADS", "WARMUP_QUERIES", "RPC_THREADS", "MAX_QUEUE_SIZE", "BATCH_SIZES", "ALLOCATION_INTERVAL")}
     env.update({"MODEL_REGISTRY": "/config/models.json", "HF_HOME": "/models", "TORCH_HOME": "/models",
                 "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"})

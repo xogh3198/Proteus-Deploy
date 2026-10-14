@@ -106,10 +106,10 @@ class SettingsTests(unittest.TestCase):
                 verify_sources(root)
 
     def test_registry_and_gpu_scope_fail_closed(self):
-        with patch.dict(os.environ, {"BASELINE_GPU_TYPE": "3090"}):
-            with self.assertRaisesRegex(ValueError, "v100"):
+        with patch.dict(os.environ, {"BASELINE_GPU_TYPE": "../other"}):
+            with self.assertRaisesRegex(ValueError, "GPU_TYPE"):
                 settings("infaas-accuracy")
-        with patch.dict(os.environ, {"BASELINE_MODEL_REGISTRY": str(ROOT / "deploy/docker/models.json")}):
+        with patch.dict(os.environ, {"BASELINE_MODEL_NAME": "not-enabled"}):
             with self.assertRaisesRegex(ValueError, "singleton"):
                 settings("clipper-ha")
         with patch.dict(os.environ, {"BASELINE_WORKER_IMAGE": "proteus-worker:0.2.0"}):

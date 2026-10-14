@@ -1,5 +1,8 @@
 # Proteus 내부 비교 기준선 — 독립 GPU 실행
 
+모델·GPU·배치 후보를 local.env로 바꾸는 단계별 명령은 **[setting_readme.md](setting_readme.md)**를 참고하세요.
+기본값은 ResNet-50이며, 다른 pinned HF 이미지 분류 모델을 한 번에 하나씩 교체할 수 있습니다.
+
 기존 INFaaS·Proteus·독립 Clipper 배포는 그대로 둡니다. 이 추가 구성은 Proteus 저장소의
 **INFaaS-Accuracy / Clipper-HA / Clipper-HT 기준선**을 각각 별도 컨테이너에서 실행합니다.
 Stanford INFaaS 서비스나 원본 C++ Clipper 서비스의 별칭이 아닙니다.

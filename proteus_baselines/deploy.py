@@ -52,7 +52,9 @@ def oneoff(c, module, *args, gpu=False, online=False, extra_mounts=()):
         "-v", c["MODEL_REGISTRY"] + ":/config/models.json:ro",
         "-v", c["MODEL_DIR"] + ":/models" + ("" if online else ":ro"),
         "-e", "GPU_TYPE=" + c["GPU_TYPE"], "-e", "CPU_THREADS=" + c["CPU_THREADS"],
-        "-e", "WARMUP_QUERIES=" + c["WARMUP_QUERIES"]]
+        "-e", "WARMUP_QUERIES=" + c["WARMUP_QUERIES"],
+        "-e", "MODEL_NAME=" + c["MODEL_NAME"], "-e", "MODEL_ID=" + c["MODEL_ID"],
+        "-e", "MODEL_REVISION=" + c["MODEL_REVISION"]]
     if online:
         command += ["-e", "HF_HUB_OFFLINE=0", "-e", "TRANSFORMERS_OFFLINE=0"]
     if gpu:
@@ -144,7 +146,7 @@ def compare(args):
     for c in configs:
         created = False
         try:
-            oneoff(c, "proteus_realtime.download", "weights", "--models", "resnet-50", online=True)
+            oneoff(c, "proteus_realtime.download", "weights", "--models", c["MODEL_NAME"], online=True)
             # Set ownership before startup so failed readiness still cleans up only
             # the name verified by container_status, never somebody else's service.
             created = True
@@ -200,7 +202,7 @@ def main(argv=None):
     parser.add_argument("--concurrency", type=int, default=64)
     parser.add_argument("--image")
     parser.add_argument("--trials", type=int)
-    parser.add_argument("--models", choices=["resnet-50"], default="resnet-50")
+    parser.add_argument("--models", help="Optional name; must match MODEL_NAME in settings")
     parser.add_argument("--from", dest="source")
     args, extra = parser.parse_known_args(argv)
     if extra and args.command not in {"query", "test", "bench", "state"}:
@@ -213,6 +215,8 @@ def main(argv=None):
     if args.baseline == "all":
         parser.error("all is only supported by compare; use an explicit baseline for all other operations")
     c = settings(args.baseline)
+    if args.models and args.models != c["MODEL_NAME"]:
+        parser.error("--models must match MODEL_NAME; set MODEL_NAME/MODEL_ID/MODEL_REVISION in local.env")
     if args.command == "settings":
         print(json.dumps(c, indent=2))
     elif args.command == "build":
@@ -223,11 +227,11 @@ def main(argv=None):
             "-t", c["WORKER_IMAGE"], "-f", str(ROOT / "deploy/docker/baselines/worker.Dockerfile"), str(ROOT)])
         print("Verified original sources:", json.dumps(sources))
     elif args.command == "download":
-        oneoff(c, "proteus_realtime.download", "weights", "--models", "resnet-50", online=True)
+        oneoff(c, "proteus_realtime.download", "weights", "--models", c["MODEL_NAME"], online=True)
     elif args.command == "seed":
         if not args.source or not Path(args.source).is_dir() or Path(args.source).resolve() == Path(c["MODEL_DIR"]):
             raise ValueError("--from must be a different existing HF_HOME directory")
-        oneoff(c, "proteus_realtime.download", "seed", "--source", "/source", "--models", "resnet-50",
+        oneoff(c, "proteus_realtime.download", "seed", "--source", "/source", "--models", c["MODEL_NAME"],
                online=True, extra_mounts=[str(Path(args.source).resolve()) + ":/source:ro"])
     elif args.command == "sample":
         path = Path(c["INPUT_IMAGE"])

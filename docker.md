@@ -1,5 +1,8 @@
 # Proteus Docker 실행 가이드
 
+이 문서는 Proteus 전용입니다. 모델·배치 설정과 INFaaS-Accuracy/Clipper-HA/HT 실행 구분은
+**[setting_readme.md](setting_readme.md)**를 참고하세요.
+
 GPU와 모델을 설정하고, 하나의 스크립트로 **빌드 → 가중치 다운로드 → 실행 → 프로파일링 → 요청 → 종료**합니다.
 기본값은 **V100 1대(GPU 2번), ResNet-50, FP32, SLO 200ms**입니다.
 사전 학습 가중치로 실제 GPU 추론을 수행하며, 모델을 새로 학습하지 않습니다.
@@ -38,7 +41,7 @@ Bash와 Python 3가 필요합니다. PyTorch 등 추론 라이브러리는 이�
 새로 받는 경우:
 
 ```bash
-git clone --branch docker/v1 --single-branch https://github.com/xogh3198/Proteus-Deploy.git Proteus
+git clone --branch docker/v2 --single-branch https://github.com/xogh3198/Proteus-Deploy.git Proteus
 cd Proteus
 ```
 

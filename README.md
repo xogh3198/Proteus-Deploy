@@ -1,8 +1,21 @@
 # Proteus
 
+## 실험 종류별 설정 및 실행
+
+모델·GPU·SLO·배치 후보 변경과 단계별 명령은 **[setting_readme.md](setting_readme.md)**를 참고하세요.
+
+| 실험 | 스크립트 | 상세 안내 |
+|---|---|---|
+| Proteus | `deploy/docker/proteus-docker.sh` | [Proteus Docker](docker.md) |
+| INFaaS-Accuracy | `deploy/docker/baseline-docker.sh infaas-accuracy` | [기준선 GPU](GPU_BASELINES.md) |
+| Clipper-HA | `deploy/docker/baseline-docker.sh clipper-ha` | [기준선 GPU](GPU_BASELINES.md) |
+| Clipper-HT | `deploy/docker/baseline-docker.sh clipper-ht` | [기준선 GPU](GPU_BASELINES.md) |
+
+GPU 실행·비교 브랜치는 `docker/v2`입니다. 기준선은 독립 INFaaS/C++ Clipper 서비스와 다릅니다.
+
 ## 실제 GPU에서 Docker로 실행하기
 
-`docker/v1` 브랜치의 **[한국어 Docker 실행 가이드](docker.md)**를 따라 실행하세요.
+Proteus만 실행하려면 **[한국어 Docker 실행 가이드](docker.md)**를 따라 실행하세요.
 기본 구성은 **V100 한 장 · ResNet-50 · FP32 · SLO 200ms**입니다.
 하나의 스크립트로 GPU·모델 설정, 이미지 빌드, 가중치 다운로드, 워커 실행,
 프로파일링, gRPC 요청, 테스트와 종료를 진행합니다. 모델 학습은 하지 않습니다.
@@ -96,7 +109,8 @@ The default one-model configuration cannot demonstrate accuracy scaling.
 Multiple-model selection requires comparable offline accuracy measurements.
 This is an experimental port, not the paper's full cluster implementation.
 The original simulator and instructions above remain unchanged. Local tests
-use a real Gurobi solver and fake GPU; V100 Docker verification remains pending.
+use a real Gurobi solver and fake GPU. Verify each server configuration using
+doctor/register/test before running policy benchmarks.
 
 ## Citation
 
