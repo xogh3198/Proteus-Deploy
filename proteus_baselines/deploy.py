@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import BASELINES
+from . import BASELINES, SUPPORTED_BASELINES
 from .config import ROOT, compose_document, settings, verify_sources
 from proteus_realtime.deployment import check_gpu_idle, container_user
 
@@ -26,6 +26,11 @@ def image_required(c):
                 c["WORKER_IMAGE"]], capture=True).stdout.strip()
     if kind != "original-single-gpu-v1":
         raise ValueError("Independent baseline image missing/wrong; run this script's build")
+    if c["BASELINE"] == "sommelier":
+        feature = run(["docker", "image", "inspect", "--format",
+            '{{index .Config.Labels "org.proteus.baseline.sommelier"}}', c["WORKER_IMAGE"]], capture=True).stdout.strip()
+        if feature != "fixed-placement-single-gpu-v1":
+            raise ValueError("This image does not include Sommelier; run sommelier build first")
 
 
 def compose(c, *args):
@@ -55,6 +60,9 @@ def oneoff(c, module, *args, gpu=False, online=False, extra_mounts=()):
         "-e", "WARMUP_QUERIES=" + c["WARMUP_QUERIES"],
         "-e", "MODEL_NAME=" + c["MODEL_NAME"], "-e", "MODEL_ID=" + c["MODEL_ID"],
         "-e", "MODEL_REVISION=" + c["MODEL_REVISION"]]
+    command += ["-e", "BASELINE=" + c["BASELINE"]]
+    if c.get("GUROBI_LICENSE_FILE"):
+        command += ["-v", c["GUROBI_LICENSE_FILE"] + ":/license/gurobi.lic:ro", "-e", "GRB_LICENSE_FILE=/license/gurobi.lic"]
     if online:
         command += ["-e", "HF_HUB_OFFLINE=0", "-e", "TRANSFORMERS_OFFLINE=0"]
     if gpu:
@@ -91,6 +99,8 @@ def up(c):
         client(c, "state")
         return
     check_gpu_idle(c)
+    if c["BASELINE"] == "sommelier":
+        Path(c["EVAL_DIR"]).mkdir(parents=True, exist_ok=True)
     for path in (c["MODEL_DIR"], c["RESULT_DIR"], str(Path(c["RUN_DIR"]) / "profiles"),
                  str(Path(c["RUN_DIR"]) / "logs/per_predictor")):
         Path(path).mkdir(parents=True, exist_ok=True)
@@ -191,9 +201,9 @@ def compare(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("baseline", choices=[*BASELINES, "all"])
+    parser.add_argument("baseline", choices=[*SUPPORTED_BASELINES, "all"])
     parser.add_argument("command", choices=["build", "settings", "download", "seed", "sample", "doctor", "up",
-        "register", "state", "query", "test", "bench", "logs", "down", "compare"])
+        "register", "state", "query", "test", "bench", "evaluate", "logs", "down", "compare"])
     parser.add_argument("--rates", default="1,5,10")
     parser.add_argument("--duration", type=float, default=30)
     parser.add_argument("--distribution", choices=["uniform", "poisson", "gamma"], default="uniform")
@@ -204,8 +214,9 @@ def main(argv=None):
     parser.add_argument("--trials", type=int)
     parser.add_argument("--models", help="Optional name; must match MODEL_NAME in settings")
     parser.add_argument("--from", dest="source")
+    parser.add_argument("--manifest", default="manifest.json")
     args, extra = parser.parse_known_args(argv)
-    if extra and args.command not in {"query", "test", "bench", "state"}:
+    if extra and args.command not in {"query", "test", "bench", "state", "evaluate"}:
         parser.error("Unknown options: " + " ".join(extra))
     if args.command == "compare":
         if args.baseline != "all" or extra:
@@ -220,18 +231,20 @@ def main(argv=None):
     if args.command == "settings":
         print(json.dumps(c, indent=2))
     elif args.command == "build":
-        sources = verify_sources()
+        sources = verify_sources(baseline=c["BASELINE"])
         run(["docker", "build", "--build-arg", "PYTHON_IMAGE=" + c["PYTHON_IMAGE"],
             "--build-arg", "TORCH_VERSION=" + c["TORCH_VERSION"],
             "--build-arg", "TORCHVISION_VERSION=" + c["TORCHVISION_VERSION"],
             "-t", c["WORKER_IMAGE"], "-f", str(ROOT / "deploy/docker/baselines/worker.Dockerfile"), str(ROOT)])
         print("Verified original sources:", json.dumps(sources))
     elif args.command == "download":
-        oneoff(c, "proteus_realtime.download", "weights", "--models", c["MODEL_NAME"], online=True)
+        model_options = [] if c["BASELINE"] == "sommelier" and not args.models else ["--models", c["MODEL_NAME"]]
+        oneoff(c, "proteus_realtime.download", "weights", *model_options, online=True)
     elif args.command == "seed":
         if not args.source or not Path(args.source).is_dir() or Path(args.source).resolve() == Path(c["MODEL_DIR"]):
             raise ValueError("--from must be a different existing HF_HOME directory")
-        oneoff(c, "proteus_realtime.download", "seed", "--source", "/source", "--models", c["MODEL_NAME"],
+        model_options = [] if c["BASELINE"] == "sommelier" and not args.models else ["--models", c["MODEL_NAME"]]
+        oneoff(c, "proteus_realtime.download", "seed", "--source", "/source", *model_options,
                online=True, extra_mounts=[str(Path(args.source).resolve()) + ":/source:ro"])
     elif args.command == "sample":
         path = Path(c["INPUT_IMAGE"])
@@ -246,6 +259,10 @@ def main(argv=None):
         down(c)
     elif args.command == "register":
         register(c, args.image, args.trials)
+    elif args.command == "evaluate":
+        if c["BASELINE"] != "sommelier":
+            parser.error("Offline evaluation is enabled only for the Sommelier multi-model port")
+        return client(c, "evaluate", options=["--manifest", args.manifest, *extra], allow_failure=True).returncode
     elif args.command == "logs":
         container_status(c)
         run(["docker", "logs", "--tail", "100", c["CONTAINER_NAME"]])

@@ -1,5 +1,6 @@
 """Reuse identical gRPC/JPEG metrics; label native tests and fixed diagnostics."""
 import argparse
+import csv
 import hashlib
 import json
 import struct
@@ -8,7 +9,7 @@ from pathlib import Path
 
 import grpc
 
-from . import BASELINES
+from . import SUPPORTED_BASELINES
 from proteus_realtime import client as common
 from proteus_realtime.metrics import summarize
 
@@ -19,6 +20,22 @@ def trace_identity(args):
         digest.update(struct.pack("!d", offset))
         count += 1
     return {"scheduled_trace_sha256": digest.hexdigest(), "scheduled_requests": count}
+
+
+def offline_accuracy_summary(csv_path, runtime):
+    """Weight source-tagged OFFLINE model scores, never score the query image."""
+    counts = {}
+    with Path(csv_path).open(newline="", encoding="utf-8") as stream:
+        for row in csv.DictReader(stream):
+            if row["ok"].lower() == "true":
+                counts[row["variant"]] = counts.get(row["variant"], 0) + 1
+    total = sum(counts.values())
+    offline = runtime.get("offline_accuracy", {})
+    known = total and all(offline.get(name, {}).get("accuracy") is not None for name in counts)
+    score = sum(offline[name]["accuracy"] * count for name, count in counts.items()) / total if known else None
+    return {"successful_requests_by_model": counts, "effective_offline_top1_pct": score,
+        "offline_accuracy_sources": offline,
+        "effective_accuracy_note": "Request-count weighted premeasured model Top-1; NOT ground-truth accuracy on these JPEG requests"}
 
 
 def cold_warm(channel, args, image):
@@ -51,9 +68,9 @@ def cold_warm(channel, args, image):
 
 def main(argv=None):
     parser = common.parser()
-    parser.add_argument("--baseline", choices=BASELINES, required=True)
+    parser.add_argument("--baseline", choices=SUPPORTED_BASELINES, required=True)
     args = parser.parse_args(argv)
-    if args.command not in {"state", "profile", "query", "test", "bench", "reset"}:
+    if args.command not in {"state", "profile", "query", "test", "bench", "reset", "evaluate"}:
         parser.error("Use state/profile/query/test/bench/reset; no Proteus mode or MILP policy-test in this adapter")
     image = Path(args.image).read_bytes() if args.image else b""
     with grpc.insecure_channel(args.controller, options=common.OPTIONS) as channel:
@@ -61,6 +78,8 @@ def main(argv=None):
         state = common.admin_call(channel, "Status", timeout=10)
         if state.get("baseline") != args.baseline:
             raise ValueError("Endpoint baseline differs from requested baseline; stop before sending data")
+        if args.command == "evaluate" and args.baseline != "sommelier":
+            raise ValueError("Singleton baseline adapters do not implement offline accuracy evaluation")
         if args.command == "test":
             if not image:
                 parser.error("Image required")
@@ -93,6 +112,9 @@ def main(argv=None):
             report.update({"experiment": "real-GPU workload of Proteus original singleton comparison baseline",
                 "baseline": args.baseline, "image_sha256": hashlib.sha256(image).hexdigest(), **trace_identity(args)})
             report["fixed1_prebenchmark_warmup_requests"] = warmup_count
+            if args.baseline == "sommelier":
+                report["experiment"] = "Actual-GPU workload of Proteus's fixed-placement Sommelier comparison port"
+                report.update(offline_accuracy_summary(path.with_suffix(".csv"), report["runtime_after"]))
             path.write_text(json.dumps(report, indent=2, allow_nan=False), encoding="utf-8")
             print("Native comparison metadata:", json.dumps({key: report[key] for key in (
                 "baseline", "image_sha256", "scheduled_trace_sha256", "scheduled_requests")}))

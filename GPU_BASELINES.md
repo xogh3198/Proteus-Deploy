@@ -1,5 +1,8 @@
 # Proteus 내부 비교 기준선 — 독립 GPU 실행
 
+Sommelier는 추가 GPU 실행 종류이며 **[전용 가이드](SOMMELIER_GPU.md)**를 사용합니다.
+이 문서의 기존 단일 모델 3개와 `all compare` 동작은 그대로 유지합니다.
+
 모델·GPU·배치 후보를 local.env로 바꾸는 단계별 명령은 **[setting_readme.md](setting_readme.md)**를 참고하세요.
 기본값은 ResNet-50이며, 다른 pinned HF 이미지 분류 모델을 한 번에 하나씩 교체할 수 있습니다.
 

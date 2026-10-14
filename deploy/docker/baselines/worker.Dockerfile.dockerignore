@@ -10,6 +10,8 @@
 !core/predictor.py
 !algorithms/
 !algorithms/clipper.py
+!algorithms/ilp.py
+!run.py
 !deploy/
 !deploy/docker/
 !deploy/docker/requirements-gpu.txt

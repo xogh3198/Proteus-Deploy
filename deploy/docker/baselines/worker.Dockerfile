@@ -14,8 +14,11 @@ COPY proteus_realtime /app/proteus_realtime
 COPY proteus_baselines /app/proteus_baselines
 COPY core/common.py core/exceptions.py core/executor.py core/predictor.py /app/core/
 COPY algorithms/clipper.py /app/algorithms/clipper.py
+COPY algorithms/ilp.py /app/algorithms/ilp.py
+COPY run.py /app/run.py
 COPY deploy/docker/baselines/models.json /config/models.json
 LABEL org.proteus.baseline.runtime="original-single-gpu-v1"
+LABEL org.proteus.baseline.sommelier="fixed-placement-single-gpu-v1"
 ENV PYTHONPATH=/app PYTHONUNBUFFERED=1 HF_HOME=/models TORCH_HOME=/models \
     HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 WORKDIR /run

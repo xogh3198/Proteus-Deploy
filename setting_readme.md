@@ -23,9 +23,13 @@ nvidia-smi
 | INFaaS-Accuracy | `bash deploy/docker/baseline-docker.sh infaas-accuracy` | `deploy/docker/baselines/baseline.local.env` | 19081 |
 | Clipper-HA | `bash deploy/docker/baseline-docker.sh clipper-ha` | 같은 파일 | 19082 |
 | Clipper-HT | `bash deploy/docker/baseline-docker.sh clipper-ht` | 같은 파일 | 19083 |
+| Sommelier | `bash deploy/docker/baseline-docker.sh sommelier` | `deploy/docker/baselines/sommelier.local.env` | 19084 |
 
 기준선 3개는 별도 컨테이너·가중치 캐시·프로파일·결과를 사용합니다.
 이들은 **Proteus 내부 정책의 GPU 포트**이며, 별도 INFaaS/원본 Clipper 배포와 구분합니다.
+
+Sommelier의 단일 모델 실행과 여러 모델·사전 정확도 설정은 **[SOMMELIER_GPU.md](SOMMELIER_GPU.md)**를 참고하세요.
+Sommelier는 전용 설정·모델 JSON을 사용하며 기존 `all compare`에는 자동으로 포함하지 않습니다.
 
 ## 3. 개인 설정 만들기
 

@@ -6,7 +6,7 @@ import os
 import re
 from pathlib import Path
 
-from . import BASELINES
+from . import BASELINES, SUPPORTED_BASELINES
 from proteus_realtime.deployment import read_env
 from proteus_realtime.registry import load_registry
 
@@ -19,24 +19,34 @@ EXPECTED_SOURCES = {
     "algorithms/clipper.py": "d1397a04e699648be5bc47e5b9061e30783a3498b8a8158e10c45fb5b7e9c013",
     "proteus_realtime/runtime.py": "d5c2f4f07ceede332a7b505ba777a77708a0061e0b42b2488e7a1913142f18f6",
 }
+SOMMELIER_SOURCES = {
+    "run.py": "d7daee55c9eab63456b4cbce4d2641088cee90464581417ea6b11dc0dbcaeaa7",
+    "algorithms/ilp.py": "0f448fe0a9b703b8d9a1e0e963669a5d016428d5fcca09c4eb49c505fb3cef33",
+    "proteus_realtime/policy.py": "bb589d37fdfe25523ab1a1f90b2f638cf39d537f198913d24396d9d9ee2bd865",
+    "proteus_realtime/serving.py": "f2e4f34248b3fd637848d50a72a8b722380da0970d3efc81fbd1a8fb172948e2",
+}
 
 
-def verify_sources(root=ROOT):
+def verify_sources(root=ROOT, baseline=None):
+    expected = {**EXPECTED_SOURCES, **(SOMMELIER_SOURCES if baseline == "sommelier" else {})}
     actual = {name: hashlib.sha256((Path(root) / name).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
-              for name in EXPECTED_SOURCES}
-    changed = [name for name, value in actual.items() if value != EXPECTED_SOURCES[name]]
+              for name in expected}
+    changed = [name for name, value in actual.items() if value != expected[name]]
     if changed:
         raise ValueError("Original policy/shared GPU backend differs from verified snapshot: " + ", ".join(changed))
     return actual
 
 
 def settings(baseline, root=ROOT):
-    if baseline not in BASELINES:
+    if baseline not in SUPPORTED_BASELINES:
         raise ValueError("Unknown baseline")
     root = Path(root).resolve()
-    default = root / "deploy/docker/baselines/baseline.env"
+    sommelier = baseline == "sommelier"
+    stem = "sommelier" if sommelier else "baseline"
+    default = root / ("deploy/docker/baselines/" + stem + ".env")
     values = read_env(default)
-    local = Path(os.environ.get("BASELINE_ENV", root / "deploy/docker/baselines/baseline.local.env"))
+    local = Path(os.environ.get("SOMMELIER_ENV" if sommelier else "BASELINE_ENV",
+                                root / ("deploy/docker/baselines/" + stem + ".local.env")))
     if local.exists():
         overrides = read_env(local)
         if set(overrides) - set(values):
@@ -45,6 +55,8 @@ def settings(baseline, root=ROOT):
     for key in values:
         if "BASELINE_" + key in os.environ:
             values[key] = os.environ["BASELINE_" + key]
+        if sommelier and "SOMMELIER_" + key in os.environ:
+            values[key] = os.environ["SOMMELIER_" + key]
     for key, low, high in (("GPU", 0, 1024), ("CPU_THREADS", 1, 128), ("RPC_THREADS", 2, 1024),
                            ("MAX_QUEUE_SIZE", 1, 100000), ("PROFILE_TRIALS", 1, 1000), ("WARMUP_QUERIES", 0, 1000)):
         if not low <= int(values[key]) <= high:
@@ -69,10 +81,26 @@ def settings(baseline, root=ROOT):
     registry = load_registry(values["MODEL_REGISTRY"], values["MODEL_NAME"],
                              values["MODEL_ID"], values["MODEL_REVISION"])
     enabled = {name: item for name, item in registry.items() if item.get("enabled", True)}
-    if set(enabled) != {values["MODEL_NAME"]} or not re.fullmatch(
+    if sommelier:
+        if values["MODEL_NAME"] not in enabled or any(not re.fullmatch(r"[0-9a-f]{40}", item.get("revision", ""))
+                                                       for item in enabled.values()):
+            raise ValueError("Sommelier needs enabled pinned models and an enabled MODEL_NAME")
+        for key in ("INITIAL_RATE", "ALLOCATION_INTERVAL"):
+            if not math.isfinite(float(values[key])) or float(values[key]) <= 0:
+                raise ValueError("Invalid Sommelier setting: " + key)
+        if not 0 < float(values["EWMA_ALPHA"]) <= 1:
+            raise ValueError("EWMA_ALPHA must be in (0,1]")
+        if not 0 <= float(values["DEADLINE_GUARD_MS"]) < float(values["SLO_MS"]):
+            raise ValueError("DEADLINE_GUARD_MS must be in [0,SLO)")
+        values["EVAL_DIR"] = str((root / Path(values["EVAL_DIR"]).expanduser()).resolve())
+        if values["GUROBI_LICENSE_FILE"]:
+            values["GUROBI_LICENSE_FILE"] = str((root / Path(values["GUROBI_LICENSE_FILE"]).expanduser()).resolve())
+            if not Path(values["GUROBI_LICENSE_FILE"]).is_file():
+                raise ValueError("GUROBI_LICENSE_FILE does not exist")
+    elif set(enabled) != {values["MODEL_NAME"]} or not re.fullmatch(
             r"[0-9a-f]{40}", enabled[values["MODEL_NAME"]].get("revision", "")):
         raise ValueError("Use exactly one enabled pinned singleton model matching MODEL_NAME")
-    values.update({"BASELINE": baseline, "ROOT": str(root), "PORT": str(19081 + BASELINES.index(baseline)),
+    values.update({"BASELINE": baseline, "ROOT": str(root), "PORT": "19084" if sommelier else str(19081 + BASELINES.index(baseline)),
         "PROJECT": "proteus-baseline-" + baseline, "NETWORK_NAME": "proteus-baseline-" + baseline,
         "CONTAINER_NAME": "proteus-baseline-" + baseline,
         "RUN_DIR": str(Path(values["DATA_ROOT"]) / baseline),
@@ -86,7 +114,7 @@ def compose_document(c, user):
            "CPU_THREADS", "WARMUP_QUERIES", "RPC_THREADS", "MAX_QUEUE_SIZE", "BATCH_SIZES", "ALLOCATION_INTERVAL")}
     env.update({"MODEL_REGISTRY": "/config/models.json", "HF_HOME": "/models", "TORCH_HOME": "/models",
                 "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"})
-    return {"services": {"worker": {"image": c["WORKER_IMAGE"], "container_name": c["CONTAINER_NAME"],
+    document = {"services": {"worker": {"image": c["WORKER_IMAGE"], "container_name": c["CONTAINER_NAME"],
         "user": user, "command": ["proteus_baselines.server"], "environment": env,
         "labels": {"org.proteus.baseline.name": c["BASELINE"]},
         "ports": ["127.0.0.1:" + c["PORT"] + ":9000"],
@@ -100,3 +128,13 @@ def compose_document(c, user):
             "--baseline", c["BASELINE"], "--controller", "127.0.0.1:9000", "--timeout", "5"],
             "interval": "5s", "timeout": "8s", "start_period": "45s", "retries": 12}}},
         "networks": {"default": {"name": c["NETWORK_NAME"], "driver": "bridge"}}}
+    if c["BASELINE"] == "sommelier":
+        env.update({key: c[key] for key in ("EWMA_ALPHA", "INITIAL_RATE", "DEADLINE_GUARD_MS")})
+        env["EVAL_DIR"] = "/eval"
+        worker = document["services"]["worker"]
+        worker["volumes"].append({"type": "bind", "source": c["EVAL_DIR"], "target": "/eval", "read_only": True})
+        if c["GUROBI_LICENSE_FILE"]:
+            worker["volumes"].append({"type": "bind", "source": c["GUROBI_LICENSE_FILE"],
+                                      "target": "/license/gurobi.lic", "read_only": True})
+            env["GRB_LICENSE_FILE"] = "/license/gurobi.lic"
+    return document
