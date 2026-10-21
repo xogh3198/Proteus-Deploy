@@ -17,13 +17,15 @@ EXPECTED_SOURCES = {
     "core/common.py": "095fa65ee2863c11b1bc67728af05529bf9843f7159c55484cae37818f7c6192",
     "core/exceptions.py": "c17125b08ea6890a000b7315b378de2a46b449b4439738a7d096f27cf18a8790",
     "algorithms/clipper.py": "d1397a04e699648be5bc47e5b9061e30783a3498b8a8158e10c45fb5b7e9c013",
-    "proteus_realtime/runtime.py": "d5c2f4f07ceede332a7b505ba777a77708a0061e0b42b2488e7a1913142f18f6",
+    "proteus_realtime/runtime.py": "c5d52bda6ed4a839c1594916d4ed2e7d215bc34ccde568833253cb47bd502991",
+    "proteus_realtime/pipeline.py": "819a79eac4ee2ee287b73d63887946ddd5610d235c006250e688bce212fb8c1f",
+    "proteus_realtime/service.py": "1720d7c28eb6df0848855bed7cee311bc964f5165ab1cbd91831f6704c0bcffa",
 }
 SOMMELIER_SOURCES = {
     "run.py": "d7daee55c9eab63456b4cbce4d2641088cee90464581417ea6b11dc0dbcaeaa7",
     "algorithms/ilp.py": "0f448fe0a9b703b8d9a1e0e963669a5d016428d5fcca09c4eb49c505fb3cef33",
     "proteus_realtime/policy.py": "bb589d37fdfe25523ab1a1f90b2f638cf39d537f198913d24396d9d9ee2bd865",
-    "proteus_realtime/serving.py": "f2e4f34248b3fd637848d50a72a8b722380da0970d3efc81fbd1a8fb172948e2",
+    "proteus_realtime/serving.py": "220b9146a1c3ef8ed37ee164ed7ba318d26c1079ebf9a05038a2360fc706d27e",
 }
 
 
@@ -58,7 +60,8 @@ def settings(baseline, root=ROOT):
         if sommelier and "SOMMELIER_" + key in os.environ:
             values[key] = os.environ["SOMMELIER_" + key]
     for key, low, high in (("GPU", 0, 1024), ("CPU_THREADS", 1, 128), ("RPC_THREADS", 2, 1024),
-                           ("MAX_QUEUE_SIZE", 1, 100000), ("PROFILE_TRIALS", 1, 1000), ("WARMUP_QUERIES", 0, 1000)):
+                           ("MAX_QUEUE_SIZE", 1, 100000), ("PROFILE_TRIALS", 1, 1000), ("WARMUP_QUERIES", 0, 1000),
+                           ("CPU_INTEROP_THREADS", 1, 128), ("PREPROCESS_WORKERS", 1, 32)):
         if not low <= int(values[key]) <= high:
             raise ValueError("Invalid numeric setting: " + key)
     for key in ("SLO_MS", "ALLOCATION_INTERVAL"):
@@ -111,7 +114,8 @@ def settings(baseline, root=ROOT):
 
 def compose_document(c, user):
     env = {key: c[key] for key in ("BASELINE", "GPU_TYPE", "MODEL_NAME", "MODEL_ID", "MODEL_REVISION", "APPLICATION", "SLO_MS",
-           "CPU_THREADS", "WARMUP_QUERIES", "RPC_THREADS", "MAX_QUEUE_SIZE", "BATCH_SIZES", "ALLOCATION_INTERVAL")}
+           "CPU_THREADS", "WARMUP_QUERIES", "RPC_THREADS", "MAX_QUEUE_SIZE", "BATCH_SIZES", "ALLOCATION_INTERVAL",
+           "CPU_INTEROP_THREADS", "PREPROCESS_WORKERS")}
     env.update({"MODEL_REGISTRY": "/config/models.json", "HF_HOME": "/models", "TORCH_HOME": "/models",
                 "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"})
     document = {"services": {"worker": {"image": c["WORKER_IMAGE"], "container_name": c["CONTAINER_NAME"],

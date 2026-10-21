@@ -16,7 +16,7 @@ def main():
     verify_sources(baseline=baseline)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [baseline] %(name)s %(message)s")
     common = dict(
-        profile_path="/run/profiles/profiles.json", slo=float(os.environ.get("SLO_MS", "200")),
+        profile_path="/run/profiles/cpu-ready-v1/profiles.json", slo=float(os.environ.get("SLO_MS", "200")),
         batches=tuple(int(v) for v in os.environ.get("BATCH_SIZES", "1,2,4,8").split(",")),
         max_queue=int(os.environ.get("MAX_QUEUE_SIZE", "256")),
         interval=float(os.environ.get("ALLOCATION_INTERVAL", "10")))

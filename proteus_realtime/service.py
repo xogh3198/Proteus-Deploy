@@ -6,6 +6,7 @@ import queue
 import threading
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass
 
 from .protocol import InferReply
@@ -24,6 +25,9 @@ class Job:
     arrival: float
     arrival_epoch_ms: float
     name: str
+    prepared: object = None
+    cpu_started: float = 0.0
+    cpu_finished: float = 0.0
 
 
 class Executor:
@@ -31,7 +35,12 @@ class Executor:
     def __init__(self, backend, max_queue=64):
         self.backend = backend
         self.queue = queue.Queue(maxsize=max_queue)
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
+        self.condition = threading.Condition(self.lock)
+        self.outstanding = {}
+        self.operations = deque()
+        from .pipeline import CpuStage
+        self.cpu = CpuStage(backend, self.condition, self._prepared, self._prepare_failed)
         self.busy = False
         self.maintenance = False
         self.stopping = False
@@ -57,25 +66,46 @@ class Executor:
         with self.lock:
             if self.maintenance or self.stopping:
                 raise BusyError("Executor is in maintenance/shutdown")
-            try:
-                self.queue.put_nowait(job)
-            except queue.Full as error:
-                raise BusyError("Request queue is full") from error
+            if len(self.outstanding) >= self.queue.maxsize:
+                raise BusyError("Request queue is full")
+            self.outstanding[job.name] = job
+            self.cpu.submit(job)
         return job.future
+
+    def _prepared(self, job):
+        if self.stopping or job.future.cancelled():
+            self.outstanding.pop(job.name, None)
+            job.future.cancel()
+        else:
+            self.queue.put_nowait(job)
+
+    def _prepare_failed(self, job, error):
+        self.outstanding.pop(job.name, None)
+        if not job.future.done():
+            self.failed += 1
+            job.future.set_exception(error)
 
     def _work(self):
         while True:
             # Take a job under the same lock as administrative admission so an
             # empty queue cannot hide a dequeued-but-not-marked-busy job.
             with self.lock:
+                operation = self.operations.popleft() if self.operations else None
                 try:
-                    job = self.queue.get_nowait()
+                    job = self.queue.get_nowait() if operation is None else None
                 except queue.Empty:
                     job = None
                 if job is not None:
                     self.busy = True
-                if self.stopping and job is None:
+                if self.stopping and job is None and operation is None:
                     return
+            if operation is not None:
+                function, future = operation
+                try:
+                    future.set_result(function())
+                except BaseException as error:
+                    future.set_exception(error)
+                continue
             if job is None:
                 time.sleep(0.001)
                 continue
@@ -87,7 +117,7 @@ class Executor:
                 started = time.perf_counter()
                 loaded = self.backend.load()
                 infer_started = time.perf_counter()
-                result = self.backend.infer(job.request.image)
+                result = self.backend.infer_prepared([job.prepared])[0]
                 finished = time.perf_counter()
                 timings = {f"worker.{key}": float(value) for key, value in result["timings"].items()}
                 timings.update({
@@ -98,6 +128,8 @@ class Executor:
                     "worker.batch_size": 1.0,
                     "worker.model_loaded": float(loaded["loaded"]),
                 })
+                from .pipeline import stage_timings
+                timings.update(stage_timings(job, started, (finished - infer_started) * 1000))
                 server_ms = (finished - job.arrival) * 1000
                 timings["server.slo_missed"] = float(server_ms > job.request.slo)
                 width, height = result["image_size"]
@@ -121,6 +153,7 @@ class Executor:
                 failure = error
             finally:
                 with self.lock:
+                    self.outstanding.pop(job.name, None)
                     self.busy = False
                 self.queue.task_done()
             # Complete the client future only after queue/maintenance bookkeeping.
@@ -131,21 +164,24 @@ class Executor:
 
     def state(self):
         with self.lock:
-            counters = {"queue_depth": self.queue.qsize(), "busy": self.busy,
+            counters = {"queue_depth": len(self.outstanding), "ready_queue_depth": self.queue.qsize(),
+                        "cpu_queue_depth": len(self.cpu.pending), "pipeline": "cpu-ready-v1", "busy": self.busy,
                         "maintenance": self.maintenance, "processed": self.processed,
                         "failed": self.failed, "server_slo_misses": self.server_slo_misses}
         return {**self.backend.describe(), **counters,
                 "implementation": "real-gpu-bootstrap", "batching": "fixed1",
                 "batch_size": 1, "milp_enabled": False, "accuracy_scaling_enabled": False,
-                "accuracy_measured": False, "preprocessing_loading_overlap": False}
+                "accuracy_measured": False, "preprocessing_loading_overlap": True}
 
     def _exclusive(self, operation):
         with self.lock:
-            if self.busy or not self.queue.empty() or self.maintenance or self.stopping:
+            if self.busy or self.outstanding or self.maintenance or self.stopping:
                 raise BusyError("Wait for all requests to finish before reset/profile")
             self.maintenance = True
+            future = concurrent.futures.Future()
+            self.operations.append((operation, future))
         try:
-            return operation()
+            return future.result()
         finally:
             with self.lock:
                 self.maintenance = False
@@ -163,16 +199,17 @@ class Executor:
             raise ValueError("profile requires a nonempty image up to 16 MiB")
         def operation():
             load = self.backend.load()
+            prepared = self.cpu.prepare_once(image)
             samples = []
             stages = {}
             for _ in range(trials):
                 started = time.perf_counter()
-                result = self.backend.infer(image)
+                result = self.backend.infer_prepared([prepared])[0]
                 samples.append((time.perf_counter() - started) * 1000)
                 for key, value in result["timings"].items():
                     stages.setdefault(key, []).append(float(value))
             from .metrics import percentile
-            return {"scope": "fixed-model batch-1 service profile; NOT MILP registration",
+            return {"scope": "prepared batch-1 GPU service profile; NOT MILP registration",
                     "batch_size": 1, "trials": trials, "load_ms": load["load_ms"],
                     "mean_service_ms": sum(samples) / len(samples),
                     "p50_service_ms": percentile(samples, 50),
@@ -186,6 +223,7 @@ class Executor:
     def close(self):
         with self.lock:
             self.stopping = True
+        self.cpu.close()
         self.thread.join(timeout=180)
         if not self.thread.is_alive():
             self.backend.reset()

@@ -16,6 +16,7 @@ from .policy import adaptive_decision, solve_milp
 from .protocol import InferReply
 from .registry import normalized_accuracies
 from .service import BusyError, Job
+from .pipeline import CpuStage, stage_timings
 
 log = logging.getLogger("proteus.serving")
 
@@ -31,6 +32,8 @@ class ProteusExecutor:
         self.interval, self.guard_ms, self.solver = interval, guard_ms, solver
         self.condition = threading.Condition(threading.RLock())
         self.queue = deque()
+        self.outstanding, self.operations = {}, deque()
+        self.cpu = CpuStage(backend, self.condition, self._prepared, self._prepare_failed)
         self.busy = self.maintenance = self.stopping = False
         self.mode = "proteus"
         self.processed = self.failed = self.dropped = self.arrivals = self.server_slo_misses = 0
@@ -149,12 +152,26 @@ class ProteusExecutor:
                 raise BusyError("Executor in maintenance/shutdown")
             if self.mode == "proteus" and self.plan is None:
                 raise ValueError("Proteus policy not ready: " + str(self.policy_error))
-            if len(self.queue) >= self.max_queue:
+            if len(self.outstanding) >= self.max_queue:
                 raise BusyError("Request queue is full")
-            self.queue.append(job)
+            self.outstanding[job.name] = job
+            self.cpu.submit(job)
             self.arrivals += 1
             self.condition.notify_all()
         return job.future
+
+    def _prepared(self, job):
+        if self.stopping or job.future.cancelled():
+            self.outstanding.pop(job.name, None)
+            job.future.cancel()
+        else:
+            self.queue.append(job)
+
+    def _prepare_failed(self, job, error):
+        self.outstanding.pop(job.name, None)
+        if not job.future.done():
+            self.failed += 1
+            job.future.set_exception(error)
 
     def _rejection(self, job, reason):
         return InferReply(request_name=job.name, rejected=True, reject_kind="deadline_drop",
@@ -164,12 +181,23 @@ class ProteusExecutor:
     def _work(self):
         while True:
             with self.condition:
-                while not self.queue or self.maintenance:
+                while (not self.queue or self.maintenance) and not self.operations:
                     if self.stopping:
                         return
                     self.condition.wait()
+                operation = self.operations.popleft() if self.operations else None
+            if operation is not None:
+                function, future = operation
+                try:
+                    future.set_result(function())
+                except BaseException as error:
+                    future.set_exception(error)
+                continue
+            with self.condition:
+                if self.maintenance:
+                    continue
                 while self.queue and self.queue[0].future.cancelled():
-                    self.queue.popleft()
+                    self.outstanding.pop(self.queue.popleft().name, None)
                 if not self.queue:
                     continue
                 plan, mode = self.plan, self.mode
@@ -184,6 +212,7 @@ class ProteusExecutor:
                         continue
                     if decision.action == "drop":
                         job = self.queue.popleft()
+                        self.outstanding.pop(job.name, None)
                         self.dropped += 1
                         if job.future.set_running_or_notify_cancel():
                             job.future.set_result(self._rejection(job, "Predicted batch cannot meet head SLO"))
@@ -196,6 +225,8 @@ class ProteusExecutor:
                     job = self.queue.popleft()
                     if job.future.set_running_or_notify_cancel():
                         jobs.append(job)
+                    else:
+                        self.outstanding.pop(job.name, None)
                 if not jobs:
                     continue
                 self.busy = True
@@ -204,7 +235,7 @@ class ProteusExecutor:
                 start = time.perf_counter()
                 load = self.backend.load(selected)
                 service_start = time.perf_counter()
-                results = self.backend.infer_batch([j.request.image for j in jobs])
+                results = self.backend.infer_prepared([j.prepared for j in jobs])
                 if len(results) != len(jobs):
                     raise RuntimeError("GPU batch reply count mismatch")
                 finish = time.perf_counter()
@@ -216,6 +247,7 @@ class ProteusExecutor:
                         "worker.service": (finish - service_start) * 1000,
                         "worker.model_loaded": float(load["loaded"]), "worker.batch_size": float(len(jobs)),
                         "server.slo_missed": float(latency > job.request.slo)})
+                    timings.update(stage_timings(job, start, (finish - service_start) * 1000))
                     timings.update({"worker." + k: v for k, v in load.get("stages", {}).items()})
                     width, height = result["image_size"]
                     replies.append(InferReply(request_name=job.name, inference=result["label"],
@@ -236,6 +268,8 @@ class ProteusExecutor:
                 log.exception("GPU batch failed")
             finally:
                 with self.condition:
+                    for job in jobs:
+                        self.outstanding.pop(job.name, None)
                     self.busy = False
                     self.condition.notify_all()
             for index, job in enumerate(jobs):
@@ -253,19 +287,25 @@ class ProteusExecutor:
                 "plan": self.plan.to_dict() if self.plan else None,
                 "milp_solve_count": self.solves, "milp_history": list(self.history),
                 "accuracy_scaling_enabled": self.mode == "proteus" and self.plan is not None and len(self.backend.enabled) > 1,
-                "accuracy_measured": bool(self.measured_accuracy), "preprocessing_loading_overlap": False,
-                "batch_size_counts": dict(self.batch_counts), "queue_depth": len(self.queue),
+                "accuracy_measured": bool(self.measured_accuracy), "preprocessing_loading_overlap": True,
+                "batch_size_counts": dict(self.batch_counts), "queue_depth": len(self.outstanding),
+                "cpu_queue_depth": len(self.cpu.pending), "ready_queue_depth": len(self.queue),
+                "preprocess_workers": self.cpu.workers, "pipeline": "cpu-ready-v1",
+                "profile_scope": "prepared-batch-service", "cpu_gpu_pipeline": True,
                 "busy": self.busy, "maintenance": self.maintenance, "processed": self.processed,
                 "failed": self.failed, "deadline_drops": self.dropped, "server_slo_misses": self.server_slo_misses}
 
     def _exclusive(self, operation):
         with self.condition:
-            if self.queue or self.busy or self.maintenance or self.stopping:
+            if self.outstanding or self.busy or self.maintenance or self.stopping:
                 raise BusyError("Wait until the request queue is idle")
             self.maintenance = True
             self.generation += 1
+            future = concurrent.futures.Future()
+            self.operations.append((operation, future))
+            self.condition.notify_all()
         try:
-            return operation()
+            return future.result()
         finally:
             with self.condition:
                 self.maintenance = False
@@ -297,24 +337,29 @@ class ProteusExecutor:
             measured_profiles = dict(self.profiles)
             for name in names:
                 load = self.backend.load(name)
+                cpu_start = time.perf_counter()
+                prepared = self.cpu.prepare_once(image)
+                cpu_ms = (time.perf_counter() - cpu_start) * 1000
                 batches = {}
                 for size in self.batches:
                     for _ in range(3):
-                        self.backend.infer_batch([image] * size)
+                        self.backend.infer_prepared([prepared] * size)
                     samples = []
                     for _ in range(trials):
                         start = time.perf_counter()
-                        self.backend.infer_batch([image] * size)
+                        self.backend.infer_prepared([prepared] * size)
                         samples.append((time.perf_counter() - start) * 1000)
                     batches[str(size)] = {"p50_ms": percentile(samples, 50),
                         "p95_ms": percentile(samples, 95), "samples_ms": samples}
                 measured_profiles[name] = {"batches": batches, "model_id": self.backend.registry[name]["model_id"],
                     "checkpoint_commit": self.backend.describe().get("checkpoint_commit"),
                     "profile_input_sha256": hashlib.sha256(image).hexdigest(), "load": load}
+                measured_profiles[name]["cpu_preparation_ms"] = cpu_ms
+                measured_profiles[name]["profile_scope"] = "prepared-batch-service"
             # Failed profiling must not leave a mixture of old/new measurements.
             self.profiles = measured_profiles
             self._save_profiles()
-            return {"scope": "actual-GPU batch service profiles for Proteus MILP and batching",
+            return {"scope": "prepared-batch-service: pack + H2D + forward + D2H/sync; CPU preprocessing excluded",
                     "profiles": self.profiles, "fingerprint": self.backend.fingerprint()}
         result = self._exclusive(measure)
         self._optimize(float(os.environ.get("INITIAL_RATE", "1")))
@@ -370,6 +415,7 @@ class ProteusExecutor:
         with self.condition:
             self.stopping = True
             self.condition.notify_all()
+        self.cpu.close()
         self.controller.join(timeout=5)
         self.thread.join(timeout=180)
         if not self.thread.is_alive():

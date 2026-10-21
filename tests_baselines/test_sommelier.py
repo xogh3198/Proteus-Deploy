@@ -56,6 +56,12 @@ class FakeGpu:
     def infer(self, image):
         return self.infer_batch([image])[0]
 
+    def prepare(self, image):
+        return {"raw": image}
+
+    def infer_prepared(self, items):
+        return self.infer_batch([item["raw"] for item in items])
+
     def reset(self):
         self.current = None
 
@@ -75,7 +81,7 @@ class ConfigTests(unittest.TestCase):
     def test_isolation_and_default_single_model_smoke(self):
         c = settings("sommelier")
         self.assertEqual(c["PORT"], "19084")
-        self.assertEqual(c["WORKER_IMAGE"], "proteus-baseline-worker:sommelier-v1")
+        self.assertEqual(c["WORKER_IMAGE"], "proteus-baseline-worker:sommelier-cpu-ready-v1")
         self.assertTrue(c["MODEL_DIR"].endswith(str(Path("sommelier/models"))))
         document = compose_document(c, "0:0")["services"]["worker"]
         self.assertEqual(document["environment"]["BASELINE"], "sommelier")

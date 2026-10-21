@@ -55,6 +55,12 @@ class FakeGpu:
         return [{"label": "Samoyed", "label_id": 258, "image_size": (20, 20),
                  "boxes": [], "timings": {"forward": 4.0}} for _ in images]
 
+    def prepare(self, image):
+        return {"raw": image}
+
+    def infer_prepared(self, items):
+        return self.infer_batch([item["raw"] for item in items])
+
     def infer(self, image):
         return self.infer_batch([image])[0]
 
@@ -292,7 +298,7 @@ class IndependenceTests(unittest.TestCase):
         self.assertNotIn("INFAAS_ENV_FILE", values)
         self.assertIn("data", values["MODEL_DIR"])
         worker = compose_document(values)["services"]["worker"]
-        self.assertEqual(worker["environment"]["PROFILE_DIR"], "/profiles")
+        self.assertEqual(worker["environment"]["PROFILE_DIR"], "/profiles/cpu-ready-v1")
         self.assertTrue(worker["volumes"][0]["read_only"])
 
 

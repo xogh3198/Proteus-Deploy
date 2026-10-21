@@ -56,7 +56,8 @@ def settings(env_file=None):
             values[key] = os.environ[key]
     for key, low, high in [("GPU", 0, 1024), ("PORT", 1024, 65535),
         ("WARMUP_QUERIES", 0, 1000), ("CPU_THREADS", 1, 128), ("RPC_THREADS", 2, 1024),
-        ("MAX_QUEUE_SIZE", 1, 100000), ("PROFILE_TRIALS", 1, 1000)]:
+        ("MAX_QUEUE_SIZE", 1, 100000), ("PROFILE_TRIALS", 1, 1000),
+        ("CPU_INTEROP_THREADS", 1, 128), ("PREPROCESS_WORKERS", 1, 32)]:
         if not low <= int(values[key]) <= high:
             raise ValueError(f"{key} must be in {low}..{high}")
     for key in ("SLO_MS", "ALLOCATION_INTERVAL", "INITIAL_RATE"):
@@ -110,12 +111,12 @@ def container_user():
 def compose_document(values, user=None):
     environment = {key: values[key] for key in [
         "GPU_TYPE", "MODEL_NAME", "MODEL_ID", "MODEL_REVISION", "APPLICATION", "WARMUP_QUERIES", "CPU_THREADS",
-        "RPC_THREADS", "MAX_QUEUE_SIZE", "SLO_MS", "BATCH_SIZES",
+        "RPC_THREADS", "MAX_QUEUE_SIZE", "SLO_MS", "BATCH_SIZES", "CPU_INTEROP_THREADS", "PREPROCESS_WORKERS",
         "ALLOCATION_INTERVAL", "EWMA_ALPHA", "INITIAL_RATE", "DEADLINE_GUARD_MS"]}
     environment.update({"HF_HOME": "/models", "TORCH_HOME": "/models",
         "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
         "WORKER_PORT": "9000", "MODEL_REGISTRY": "/config/models.json",
-        "PROFILE_DIR": "/profiles", "EVAL_DIR": "/eval", "PYTHONUNBUFFERED": "1"})
+        "PROFILE_DIR": "/profiles/cpu-ready-v1", "EVAL_DIR": "/eval", "PYTHONUNBUFFERED": "1"})
     volumes = [
         {"type": "bind", "source": values["MODEL_DIR"], "target": "/models", "read_only": True},
         {"type": "bind", "source": values["MODEL_REGISTRY"], "target": "/config/models.json", "read_only": True},

@@ -2,6 +2,9 @@
 
 이 문서는 **실제 GPU 추론**용입니다. 저장소 루트에서 실행합니다.
 
+CPU 전처리 → 텐서 큐 → GPU 실행으로 갱신한 버전의 재빌드·재프로파일링은
+[CPU_READY_PIPELINE.md](CPU_READY_PIPELINE.md)를 먼저 확인하세요.
+
 ## 1. 코드와 Docker 확인
 
 ```bash
@@ -153,7 +156,7 @@ bash deploy/docker/baseline-docker.sh all compare --rates 1,5,10 --duration 30 -
 
 ## 7. 결과 확인
 
-- Proteus: `DATA_DIR/results/`, `DATA_DIR/profiles/`.
+- Proteus: `DATA_DIR/results/`, 새 프로파일 `DATA_DIR/profiles/cpu-ready-v1/`.
 - 기준선: `DATA_ROOT/<기법>/results/`, `profiles/`, `logs/`.
 - `test`는 **고정 배치 1 cold/warm 진단**, `bench`는 **실제 정책 부하 실험**입니다.
 - `OK`는 추론 성공입니다. SLO 충족률과 실제 배치 크기는 결과 CSV/JSON으로 확인하세요.

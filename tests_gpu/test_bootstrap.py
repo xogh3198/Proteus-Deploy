@@ -47,6 +47,12 @@ class FakeBackend:
     def reset(self):
         self.resident = False
 
+    def prepare(self, image):
+        return {"raw": image}
+
+    def infer_prepared(self, items):
+        return [self.infer(item["raw"]) for item in items]
+
     def describe(self):
         return {"resident": self.resident, "gpu_name": "FAKE: unit test only"}
 
@@ -161,7 +167,8 @@ class ExecutorTests(unittest.TestCase):
             if self.executor.state()["busy"]:
                 break
             time.sleep(0.001)
-        futures.extend([self.executor.submit(self.request()), self.executor.submit(self.request())])
+        # Limit now covers CPU preparation + ready queue + running GPU work.
+        futures.append(self.executor.submit(self.request()))
         with self.assertRaises(BusyError):
             self.executor.submit(self.request())
         for future in futures:

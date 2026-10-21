@@ -51,6 +51,12 @@ class FakeGpu:
     def reset(self):
         self.current = None
 
+    def prepare(self, image):
+        return {"raw": image}
+
+    def infer_prepared(self, items):
+        return self.infer_batch([item["raw"] for item in items])
+
     def fingerprint(self):
         return {"gpu": "TEST FIXTURE", "revision": "unit-only"}
 

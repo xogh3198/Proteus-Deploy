@@ -17,6 +17,7 @@ from .native import NativePolicy, source_hashes
 from proteus_realtime.metrics import percentile
 from proteus_realtime.protocol import InferReply
 from proteus_realtime.service import BusyError, Job
+from proteus_realtime.pipeline import CpuStage, stage_timings
 
 log = logging.getLogger("proteus.baselines")
 
@@ -36,6 +37,7 @@ class BaselineExecutor:
         self.profile_path = Path(profile_path) if profile_path else None
         self.condition = threading.Condition(threading.RLock())
         self.incoming, self.completed, self.jobs = deque(), deque(), {}
+        self.cpu = CpuStage(backend, self.condition, self._prepared, self._prepare_failed)
         self.timers, self.timer_seq = [], 0
         self.native, self.profile_data = None, None
         self.mode = "native"
@@ -98,11 +100,24 @@ class BaselineExecutor:
             if len(self.jobs) >= self.max_queue:
                 raise BusyError("Independent baseline's bounded queue is full")
             self.jobs[job.name] = job
-            self.incoming.append(job)
+            self.cpu.submit(job)
             self.arrivals += 1
             self.native_arrivals += int(self.mode == "native")
             self.condition.notify_all()
         return job.future
+
+    def _prepared(self, job):
+        if self.stopping or job.future.cancelled():
+            self.jobs.pop(job.name, None)
+            job.future.cancel()
+        else:
+            self.incoming.append(job)
+
+    def _prepare_failed(self, job, error):
+        self.jobs.pop(job.name, None)
+        if not job.future.done():
+            self.failed += 1
+            job.future.set_exception(error)
 
     def schedule(self, when, event):
         self.timer_seq += 1
@@ -138,7 +153,7 @@ class BaselineExecutor:
         started = time.perf_counter()
         loaded = self.backend.load(self.backend.model_name)
         service_start = time.perf_counter()
-        results = self.backend.infer_batch([job.request.image for job in jobs])
+        results = self.backend.infer_prepared([job.prepared for job in jobs])
         finished = time.perf_counter()
         if len(results) != len(jobs):
             raise RuntimeError("Real GPU batch reply count mismatch")
@@ -151,6 +166,7 @@ class BaselineExecutor:
                 "worker.service": (finished - service_start) * 1000,
                 "worker.model_loaded": float(loaded["loaded"]), "worker.batch_size": float(len(jobs)),
                 "server.slo_missed": float(latency > self.slo)})
+            timings.update(stage_timings(job, started, (finished - service_start) * 1000, self.origin))
             timings.update({"worker." + key: value for key, value in loaded.get("stages", {}).items()})
             width, height = result["image_size"]
             replies.append(InferReply(request_name=job.name, inference=result["label"],
@@ -244,7 +260,7 @@ class BaselineExecutor:
                 raise BusyError("Wait until this baseline's real GPU queue is idle")
             self.maintenance = True
         try:
-            return function()
+            return self.pool.submit(function).result()
         finally:
             with self.condition:
                 self.maintenance = False
@@ -255,19 +271,23 @@ class BaselineExecutor:
             raise ValueError("Raw JPEG and trials in 1..1000 required")
         def measure():
             self.backend.load()
+            cpu_start = time.perf_counter()
+            prepared = self.cpu.prepare_once(image)
+            cpu_ms = (time.perf_counter() - cpu_start) * 1000
             batches = {}
             for size in self.batches:
                 for _ in range(3):
-                    self.backend.infer_batch([image] * size)
+                    self.backend.infer_prepared([prepared] * size)
                 samples = []
                 for _ in range(trials):
                     start = time.perf_counter()
-                    self.backend.infer_batch([image] * size)
+                    self.backend.infer_prepared([prepared] * size)
                     samples.append((time.perf_counter() - start) * 1000)
                 batches[str(size)] = {"p50_ms": percentile(samples, 50), "p95_ms": percentile(samples, 95),
                                       "samples_ms": samples}
             previous_profile = self.profile_data
-            self.profile_data = {"schema": "baseline-real-gpu-v1", "fingerprint": self.backend.fingerprint(),
+            self.profile_data = {"schema": "baseline-cpu-ready-v1", "fingerprint": self.backend.fingerprint(),
+                "profile_scope": "prepared-batch-service", "cpu_preparation_ms": cpu_ms,
                 "slo_ms": self.slo, "model": self.backend.model_name, "batches": batches,
                 "input_sha256": hashlib.sha256(image).hexdigest()}
             try:
@@ -315,6 +335,10 @@ class BaselineExecutor:
                 "infaas_controller_calls": native.controller_calls if native else 0,
                 "source_hashes": source_hashes(), "profile": self.profile_data,
                 "actual_batch_counts": dict(self.batch_counts), "queue_depth": len(self.jobs),
+                "cpu_queue_depth": len(self.cpu.pending),
+                "ready_queue_depth": len(self.incoming) + (len(native.predictor.request_queue) if native else 0),
+                "preprocess_workers": self.cpu.workers, "pipeline": "cpu-ready-v1",
+                "profile_scope": "prepared-batch-service", "cpu_gpu_pipeline": True,
                 "busy": self.busy, "processed": self.processed, "failed": self.failed,
                 "policy_errors": self.policy_errors,
                 "deadline_drops": self.dropped, "server_slo_misses": self.server_slo_misses,
@@ -328,6 +352,7 @@ class BaselineExecutor:
         with self.condition:
             self.stopping = True
             self.condition.notify_all()
+        self.cpu.close()
         self.thread.join(timeout=180)
         self.pool.shutdown(wait=True)
         if self.thread.is_alive():
