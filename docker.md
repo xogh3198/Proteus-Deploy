@@ -41,7 +41,7 @@ Bash와 Python 3가 필요합니다. PyTorch 등 추론 라이브러리는 이�
 새로 받는 경우:
 
 ```bash
-git clone --branch docker/v2 --single-branch https://github.com/xogh3198/Proteus-Deploy.git Proteus
+git clone --branch docker/v4 --single-branch https://github.com/xogh3198/Proteus-Deploy.git Proteus
 cd Proteus
 ```
 

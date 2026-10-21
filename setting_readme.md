@@ -8,7 +8,7 @@ CPU 전처리 → 텐서 큐 → GPU 실행으로 갱신한 버전의 재빌드�
 ## 1. 코드와 Docker 확인
 
 ```bash
-git clone --branch docker/v2 --single-branch https://github.com/xogh3198/Proteus-Deploy.git Proteus
+git clone --branch docker/v4 --single-branch https://github.com/xogh3198/Proteus-Deploy.git Proteus
 cd Proteus
 docker info --format '{{.DockerRootDir}}'
 nvidia-smi

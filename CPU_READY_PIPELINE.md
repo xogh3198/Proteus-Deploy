@@ -1,6 +1,7 @@
 # CPU 전처리와 GPU 실행 분리
 
-`docker/v2`에서 분기한 `docker/cpu-ready-v1`의 Proteus·INFaaS-Accuracy·Clipper-HA·HT·Sommelier GPU 경로에 적용합니다.
+`docker/v2`에서 분기한 `docker/v4`의 Proteus·INFaaS-Accuracy·Clipper-HA·HT·Sommelier GPU 경로에 적용합니다.
+세 저장소의 전처리 분리 버전은 `docker/v4`로 통일했습니다. 이전 `docker/cpu-ready-v1`과 실행 코드는 같습니다.
 
 ## GPU 서버에서 코드 받기
 
@@ -10,15 +11,15 @@
 ```bash
 cd /home/xsailor4/taeho/serving-repos/Proteus
 git status --short
-git fetch origin refs/heads/docker/cpu-ready-v1
-git checkout -b docker/cpu-ready-v1 FETCH_HEAD
+git fetch origin refs/heads/docker/v4
+git checkout -b docker/v4 FETCH_HEAD
 ```
 
 이미 이 로컬 브랜치를 만들었다면 마지막 두 명령 대신 다음을 사용합니다.
 
 ```bash
-git checkout docker/cpu-ready-v1
-git pull --ff-only origin docker/cpu-ready-v1
+git checkout docker/v4
+git pull --ff-only origin docker/v4
 ```
 
 단일 브랜치 clone/구형 Git에서도 쓸 수 있도록 최초 생성에는 `FETCH_HEAD`를 사용합니다.

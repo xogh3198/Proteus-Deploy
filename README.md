@@ -12,7 +12,8 @@
 | Clipper-HT | `deploy/docker/baseline-docker.sh clipper-ht` | [기준선 GPU](GPU_BASELINES.md) |
 | Sommelier | `deploy/docker/baseline-docker.sh sommelier` | [모델 교체 GPU 실험](SOMMELIER_GPU.md) |
 
-GPU 실행·비교 브랜치는 `docker/v2`입니다. 기준선은 독립 INFaaS/C++ Clipper 서비스와 다릅니다.
+CPU 전처리 후 텐서를 GPU 실행 큐에 넣는 GPU 실행·비교 브랜치는 `docker/v4`입니다.
+기준선은 독립 INFaaS/C++ Clipper 서비스와 다릅니다.
 
 ## 실제 GPU에서 Docker로 실행하기
 
