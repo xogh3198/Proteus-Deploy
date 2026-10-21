@@ -4,6 +4,7 @@
 
 CPU 전처리 → 텐서 큐 → GPU 실행으로 갱신한 버전의 재빌드·재프로파일링은
 [CPU_READY_PIPELINE.md](CPU_READY_PIPELINE.md)를 먼저 확인하세요.
+기존 설정 보존 보정 패치와 전체 실험 조건: [EXPERIMENT_SETTINGS.md](EXPERIMENT_SETTINGS.md).
 
 ## 1. 코드와 Docker 확인
 

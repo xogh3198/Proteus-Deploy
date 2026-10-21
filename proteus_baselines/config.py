@@ -18,14 +18,14 @@ EXPECTED_SOURCES = {
     "core/exceptions.py": "c17125b08ea6890a000b7315b378de2a46b449b4439738a7d096f27cf18a8790",
     "algorithms/clipper.py": "d1397a04e699648be5bc47e5b9061e30783a3498b8a8158e10c45fb5b7e9c013",
     "proteus_realtime/runtime.py": "c5d52bda6ed4a839c1594916d4ed2e7d215bc34ccde568833253cb47bd502991",
-    "proteus_realtime/pipeline.py": "819a79eac4ee2ee287b73d63887946ddd5610d235c006250e688bce212fb8c1f",
-    "proteus_realtime/service.py": "1720d7c28eb6df0848855bed7cee311bc964f5165ab1cbd91831f6704c0bcffa",
+    "proteus_realtime/pipeline.py": "1d9a0a0a9cadffdd9733e77fbca34e347359eab5b14446fd4dccf43d23e3fb65",
+    "proteus_realtime/service.py": "e9e3304b4db4da59970856792780fa0d5ddaba084e9d494cb5ea1bfc5cd52d44",
 }
 SOMMELIER_SOURCES = {
     "run.py": "d7daee55c9eab63456b4cbce4d2641088cee90464581417ea6b11dc0dbcaeaa7",
     "algorithms/ilp.py": "0f448fe0a9b703b8d9a1e0e963669a5d016428d5fcca09c4eb49c505fb3cef33",
     "proteus_realtime/policy.py": "bb589d37fdfe25523ab1a1f90b2f638cf39d537f198913d24396d9d9ee2bd865",
-    "proteus_realtime/serving.py": "220b9146a1c3ef8ed37ee164ed7ba318d26c1079ebf9a05038a2360fc706d27e",
+    "proteus_realtime/serving.py": "04a295959c3d8b40174d616087a57db8e18fc6d1007f2532171d5d72d09abaad",
 }
 
 

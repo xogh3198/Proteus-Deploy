@@ -67,12 +67,15 @@ class CpuReadyTests(unittest.TestCase):
             self.assertTrue(gpu_started.wait(3))
             second = executor.submit(InferRequest(model="imagenet", image=b"second", slo=200))
             self.assertTrue(next_prepared.wait(3), "CPU blocked behind GPU execution")
+            third = executor.submit(InferRequest(model="imagenet", image=b"third", slo=200))
+            self.assertEqual(executor.state()["queue_depth"], 2)
+            self.assertEqual(executor.state()["outstanding_requests"], 3)
             with self.assertRaises(BusyError):
-                executor.submit(InferRequest(model="imagenet", image=b"third", slo=200))
+                executor.submit(InferRequest(model="imagenet", image=b"fourth", slo=200))
             with self.assertRaises(BusyError):
                 executor.reset()
             release_gpu.set()
-            for future in (first, second):
+            for future in (first, second, third):
                 reply = future.result(3)
                 self.assertIn("worker.cpu_service", reply.timings)
                 self.assertIn("worker.ready_queue", reply.timings)

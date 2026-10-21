@@ -35,6 +35,7 @@ class ProteusExecutor:
         self.outstanding, self.operations = {}, deque()
         self.cpu = CpuStage(backend, self.condition, self._prepared, self._prepare_failed)
         self.busy = self.maintenance = self.stopping = False
+        self.running_count = 0
         self.mode = "proteus"
         self.processed = self.failed = self.dropped = self.arrivals = self.server_slo_misses = 0
         self.batch_counts = {}
@@ -152,7 +153,9 @@ class ProteusExecutor:
                 raise BusyError("Executor in maintenance/shutdown")
             if self.mode == "proteus" and self.plan is None:
                 raise ValueError("Proteus policy not ready: " + str(self.policy_error))
-            if len(self.outstanding) >= self.max_queue:
+            # Preserve MAX_QUEUE_SIZE's original meaning: waiting requests,
+            # excluding the already-running GPU batch. CPU-pending jobs wait too.
+            if len(self.outstanding) - self.running_count >= self.max_queue:
                 raise BusyError("Request queue is full")
             self.outstanding[job.name] = job
             self.cpu.submit(job)
@@ -230,6 +233,7 @@ class ProteusExecutor:
                 if not jobs:
                     continue
                 self.busy = True
+                self.running_count = len(jobs)
             replies, error = [], None
             try:
                 start = time.perf_counter()
@@ -271,6 +275,7 @@ class ProteusExecutor:
                     for job in jobs:
                         self.outstanding.pop(job.name, None)
                     self.busy = False
+                    self.running_count = 0
                     self.condition.notify_all()
             for index, job in enumerate(jobs):
                 if error:
@@ -288,7 +293,10 @@ class ProteusExecutor:
                 "milp_solve_count": self.solves, "milp_history": list(self.history),
                 "accuracy_scaling_enabled": self.mode == "proteus" and self.plan is not None and len(self.backend.enabled) > 1,
                 "accuracy_measured": bool(self.measured_accuracy), "preprocessing_loading_overlap": True,
-                "batch_size_counts": dict(self.batch_counts), "queue_depth": len(self.outstanding),
+                "batch_size_counts": dict(self.batch_counts),
+                "queue_depth": len(self.outstanding) - self.running_count,
+                "outstanding_requests": len(self.outstanding), "running_requests": self.running_count,
+                "queue_limit_scope": "waiting-cpu-and-ready-excludes-running-gpu",
                 "cpu_queue_depth": len(self.cpu.pending), "ready_queue_depth": len(self.queue),
                 "preprocess_workers": self.cpu.workers, "pipeline": "cpu-ready-v1",
                 "profile_scope": "prepared-batch-service", "cpu_gpu_pipeline": True,

@@ -167,7 +167,8 @@ class ExecutorTests(unittest.TestCase):
             if self.executor.state()["busy"]:
                 break
             time.sleep(0.001)
-        # Limit now covers CPU preparation + ready queue + running GPU work.
+        # Keep the original two waiting slots, excluding the active GPU job.
+        futures.append(self.executor.submit(self.request()))
         futures.append(self.executor.submit(self.request()))
         with self.assertRaises(BusyError):
             self.executor.submit(self.request())

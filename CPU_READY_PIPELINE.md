@@ -1,7 +1,8 @@
 # CPU 전처리와 GPU 실행 분리
 
 `docker/v2`에서 분기한 `docker/v4`의 Proteus·INFaaS-Accuracy·Clipper-HA·HT·Sommelier GPU 경로에 적용합니다.
-세 저장소의 전처리 분리 버전은 `docker/v4`로 통일했습니다. 이전 `docker/cpu-ready-v1`과 실행 코드는 같습니다.
+`docker/v4` 기준 보정 패치에서는 기존 큐 한도 의미를 복구했습니다.
+전체 실험 설정과 유지/변경 범위는 [EXPERIMENT_SETTINGS.md](EXPERIMENT_SETTINGS.md)에 정리했습니다.
 
 ## GPU 서버에서 코드 받기
 
@@ -34,7 +35,9 @@ JPEG 수신(최초 마감시각 설정)
 - 앞 요청의 GPU 실행/모델 준비와 다음 요청의 CPU 전처리가 겹칠 수 있습니다.
 - CPU 전처리가 끝나도 SLO를 다시 시작하지 않습니다. 대기·전처리·로딩·실행을 모두 포함합니다.
 - 기존 MILP·accscale·INFaaS-Accuracy·AIMD 정책은 유지합니다. 논문 원본 시뮬레이터를 수정한 것은 아닙니다.
-- `MAX_QUEUE_SIZE`는 CPU 준비 중 + 준비 완료 + 실행 중인 전체 미완료 요청 수를 제한합니다.
+- Proteus의 `MAX_QUEUE_SIZE=256`은 기존처럼 **대기 중인 요청** 한도입니다.
+  분리된 CPU 준비 대기/진행 + ready 큐를 포함하고, 이미 실행 중인 GPU 배치는 제외합니다.
+  내부 기준선 3개는 기존처럼 전체 미완료 요청을 계산합니다. Sommelier 포트는 Proteus와 같습니다.
 - 여러 모델을 바꿔 쓸 때는 전처리 설정이 같아야 합니다. 다르면 시작 단계에서 거부합니다.
   현재 pinned ResNet-18/50은 동일 설정입니다. 전처리 결과를 모델 변경 후 잘못 재사용하지 않게 검사합니다.
 
@@ -51,6 +54,7 @@ PREPROCESS_WORKERS=1
 
 `CPU_THREADS`는 PyTorch intra-op 스레드 수, `PREPROCESS_WORKERS`는 동시 CPU 준비 작업 수입니다.
 CPU 코어 2개를 독점한다는 뜻이 아니며, 기본 1 작업자로도 CPU/GPU 단계는 겹칩니다.
+기존에도 배치 실행 경로의 CPU 준비는 작업자 1개가 담당했습니다. 이 수를 늘리는 튜닝은 하지 않습니다.
 
 이미지 태그도 바꿔 이전 이미지를 보존합니다.
 
@@ -97,6 +101,8 @@ bash deploy/docker/baseline-docker.sh infaas-accuracy down
 - **반드시 register 재실행**: 이전 전처리 포함 프로파일을 재사용하면 안 됩니다.
 - 새 프로파일은 CPU 전처리를 제외한 `pack + H2D + forward + D2H/sync`입니다.
   CPU 준비는 별도로 `cpu_preparation_ms`에 기록합니다. 프로파일과 실제 GPU 실행 스레드를 맞췄습니다.
+  이 측정 경계 변경은 전처리가 끝난 큐의 **남은 실행 시간**을 예측하기 위한 파이프라인 변경의 일부입니다.
+  기존 전처리 포함 프로파일과 동일한 측정이라고 부르지 않습니다. P50 선택·반복 30회·후보 크기는 유지합니다.
 - Proteus: `DATA_DIR/profiles/cpu-ready-v1/profiles.json`.
 - 기준선: `DATA_ROOT/<기법>/profiles/cpu-ready-v1/profiles.json`.
 - 이전 프로파일·가중치·결과는 삭제하지 않습니다. 새 fingerprint와 경로로 구분합니다.

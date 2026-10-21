@@ -1,8 +1,9 @@
 """CPU preparation ahead of the policy queue, preserving admission order.
 
 All state transitions use the owner's condition. No CUDA work is performed by
-this stage. The owner's outstanding-request bound covers preparation + ready
-queue + running GPU work, so the pool's internal queue cannot grow unbounded.
+this stage. Admission is bounded by the owner's existing queue semantics:
+Proteus counts CPU/ready waiting work, baselines count all outstanding work.
+The pool therefore cannot bypass either owner's admission limit.
 """
 import concurrent.futures
 import os

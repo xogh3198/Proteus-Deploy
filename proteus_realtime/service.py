@@ -66,7 +66,7 @@ class Executor:
         with self.lock:
             if self.maintenance or self.stopping:
                 raise BusyError("Executor is in maintenance/shutdown")
-            if len(self.outstanding) >= self.queue.maxsize:
+            if len(self.outstanding) - int(self.busy) >= self.queue.maxsize:
                 raise BusyError("Request queue is full")
             self.outstanding[job.name] = job
             self.cpu.submit(job)
@@ -164,7 +164,9 @@ class Executor:
 
     def state(self):
         with self.lock:
-            counters = {"queue_depth": len(self.outstanding), "ready_queue_depth": self.queue.qsize(),
+            counters = {"queue_depth": len(self.outstanding) - int(self.busy),
+                        "outstanding_requests": len(self.outstanding), "ready_queue_depth": self.queue.qsize(),
+                        "queue_limit_scope": "waiting-cpu-and-ready-excludes-running-gpu",
                         "cpu_queue_depth": len(self.cpu.pending), "pipeline": "cpu-ready-v1", "busy": self.busy,
                         "maintenance": self.maintenance, "processed": self.processed,
                         "failed": self.failed, "server_slo_misses": self.server_slo_misses}

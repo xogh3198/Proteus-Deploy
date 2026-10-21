@@ -182,6 +182,10 @@ class ServingTests(unittest.TestCase):
 
     def test_real_grpc_burst_forms_batch(self):
         self.register()
+        # This fake-backend test checks gRPC/batch wiring, not OS timer accuracy.
+        # Deadline arithmetic is tested with a deterministic clock in BatchingTests.
+        # Keep a wider test-only dispatch window; production guard remains 2 ms.
+        self.executor.guard_ms = 100
         args = argparse.Namespace(model="imagenet", slo=200, timeout=3, output=self.tmp.name)
         with patch("builtins.print"):
             self.assertEqual(policy_test(self.channel, args, b"jpeg"), 0)
