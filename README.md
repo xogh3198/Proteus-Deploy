@@ -3,6 +3,9 @@
 ## 실험 종류별 설정 및 실행
 
 모델·GPU·SLO·배치 후보 변경과 단계별 명령은 **[setting_readme.md](setting_readme.md)**를 참고하세요.
+CPU 주파수 변화에 따른 연속/간헐 실행 차이를 반영하는 프로파일링은 [IDLE_AWARE_PROFILING.md](IDLE_AWARE_PROFILING.md)를 참고하세요.
+클라이언트 E2E/워커 내부 SLO 구분과 별도 RPC 시간 예산은 [RPC_BUDGET.md](RPC_BUDGET.md)를 참고하세요.
+CPU 스레드별 전처리기와 조기 만료 처리 보정은 [CPU_DEADLINE_FIX.md](CPU_DEADLINE_FIX.md)를 참고하세요.
 
 | 실험 | 스크립트 | 상세 안내 |
 |---|---|---|

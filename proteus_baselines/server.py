@@ -9,6 +9,7 @@ from proteus_realtime.server import create_server
 from .serving import BaselineExecutor
 from .config import verify_sources
 from .sommelier import SommelierExecutor
+from .infaas_accuracy import AccuracyExecutor
 
 
 def main():
@@ -20,11 +21,14 @@ def main():
         batches=tuple(int(v) for v in os.environ.get("BATCH_SIZES", "1,2,4,8").split(",")),
         max_queue=int(os.environ.get("MAX_QUEUE_SIZE", "256")),
         interval=float(os.environ.get("ALLOCATION_INTERVAL", "10")))
+    backend = GpuRuntime()
     if baseline == "sommelier":
-        executor = SommelierExecutor(GpuRuntime(), **common,
+        executor = SommelierExecutor(backend, **common,
                                     guard_ms=float(os.environ.get("DEADLINE_GUARD_MS", "2")))
+    elif baseline == "infaas-accuracy" and len(backend.enabled) > 1:
+        executor = AccuracyExecutor(backend, **common)
     else:
-        executor = BaselineExecutor(GpuRuntime(), baseline, **common)
+        executor = BaselineExecutor(backend, baseline, **common)
     server, _ = create_server(executor, "0.0.0.0:9000", int(os.environ.get("RPC_THREADS", "128")))
     server.start()
     logging.info("READY %s", json.dumps(executor.state(), ensure_ascii=False))

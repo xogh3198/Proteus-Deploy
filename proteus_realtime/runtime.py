@@ -50,8 +50,10 @@ class GpuRuntime:
             if (tensor @ tensor)[0, 0].item() != 2:
                 raise RuntimeError("CUDA math check failed")
         self.stream.synchronize()
-        self._processor_lock = threading.Lock()
         self.cpu_processor, self.preprocess_contract = self._shared_processor()
+        # Only configuration is shared. Each CPU thread owns its processor;
+        # mutable processor state must not serialize otherwise independent jobs.
+        self._cpu_processors = threading.local()
         self.startup_ms = (time.perf_counter() - startup) * 1000
 
     def _shared_processor(self):
@@ -112,15 +114,21 @@ class GpuRuntime:
         self.stream.synchronize()
         return labels
 
+    def _thread_processor(self):
+        processor = getattr(self._cpu_processors, "processor", None)
+        if processor is None:
+            processor = type(self.cpu_processor).from_dict(self.cpu_processor.to_dict())
+            self._cpu_processors.processor = processor
+        return processor
+
     def prepare(self, data):
         """CPU only; independent of the resident GPU model or its load lock."""
         started = time.perf_counter()
         with self.Image.open(io.BytesIO(data)) as source:
             image = source.convert("RGB")
         decoded = time.perf_counter()
-        # Default one CPU worker; protect mutable processor state if increased.
-        with self._processor_lock:
-            inputs = dict(self.cpu_processor(images=[image], return_tensors="pt"))
+        # Clone once per CPU thread, never per image and never via network I/O.
+        inputs = dict(self._thread_processor()(images=[image], return_tensors="pt"))
         preprocessed = time.perf_counter()
         if any(value.device.type != "cpu" for value in inputs.values()):
             raise RuntimeError("Preparation must produce CPU tensors")
@@ -191,4 +199,6 @@ class GpuRuntime:
                 "checkpoint_commit": getattr(getattr(self.model, "config", None), "_commit_hash", None),
                 "allocated_mib": self.torch.cuda.memory_allocated() / (1024 * 1024),
                 "reserved_mib": self.torch.cuda.memory_reserved() / (1024 * 1024),
-                "startup_ms": self.startup_ms, "load_stages": dict(self.load_stages), **self.fingerprint()}
+                "startup_ms": self.startup_ms, "load_stages": dict(self.load_stages),
+                "preprocess_processor_ownership": "thread-local-v1",
+                "preprocess_shared_lock": False, **self.fingerprint()}

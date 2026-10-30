@@ -1,0 +1,28 @@
+{
+  "models": {
+    "resnet-18": {
+      "enabled": true,
+      "model_id": "microsoft/resnet-18",
+      "revision": "65a5785d9156231087c481e0c7dd33a5ff6f7e3e",
+      "accuracy": 70.93,
+      "accuracy_source": "Proteus aggregate_profiled.csv/resnet18_v1; not measured for this HF checkpoint",
+      "accuracy_dataset": "imagenet-1k/top1/proteus-reference"
+    },
+    "resnet-50": {
+      "enabled": true,
+      "model_id": "microsoft/resnet-50",
+      "revision": "34c2154c194f829b11125337b98c8f5f9965ff19",
+      "accuracy": 77.36,
+      "accuracy_source": "Proteus aggregate_profiled.csv/resnet50_v1; not measured for this HF checkpoint",
+      "accuracy_dataset": "imagenet-1k/top1/proteus-reference"
+    },
+    "resnet-101": {
+      "enabled": true,
+      "model_id": "microsoft/resnet-101",
+      "revision": "c2bf50f68263a35f102eb5c84ca91fc7352ceff3",
+      "accuracy": 78.34,
+      "accuracy_source": "Proteus aggregate_profiled.csv/resnet101_v1; not measured for this HF checkpoint",
+      "accuracy_dataset": "imagenet-1k/top1/proteus-reference"
+    }
+  }
+}

@@ -37,6 +37,10 @@ def main():
         host_wrapper.write_text(
             'import json,os,subprocess,sys\n'
             'sys.path.insert(0,os.getcwd())\n'
+            'if sys.argv[1:3] == ["-m","proteus_realtime.metrics"]:\n'
+            '    from proteus_realtime.metrics import main\n'
+            '    main(sys.argv[3:])\n'
+            '    raise SystemExit(0)\n'
             'if sys.argv[1:3] != ["-m","proteus_realtime.deployment"]:\n'
             '    raise RuntimeError("Unexpected host Python invocation")\n'
             'from proteus_realtime import deployment\n'
@@ -72,6 +76,7 @@ def main():
         env_file = fixtures / "smoke.env"
         env_file.write_text(
             f"MODEL_DIR={fixtures.as_posix()}/models\nDATA_DIR={fixtures.as_posix()}/data\n"
+            f"INPUT_IMAGE={(fixtures / 'input.jpg').as_posix()}\nPREPROCESS_WORKERS=4\n"
             "ALLOW_GPU_SHARING=1\n",  # mock routing only; never do this for measurements
             encoding="utf-8")
         image = fixtures / "input.jpg"
@@ -82,6 +87,10 @@ def main():
                    SMOKE_LOG=str(fixtures / "docker.jsonl"), SMOKE_HOST_WRAPPER=shell_path(host_wrapper))
         env["PATH"] = str(fixtures) + os.pathsep + str(Path(args.bash).resolve().parent) + os.pathsep + env["PATH"]
         script = "deploy/docker/proteus-docker.sh"
+        result_dir = fixtures / "data/results"
+        result_dir.mkdir(parents=True)
+        saved_csv = result_dir / "bench-20000101.csv"
+        saved_csv.write_text("ok,e2e_ms,server_ms,slo_ms,slo_met\nTrue,201,196,200,False\n", encoding="utf-8")
         commands = [
             ["help"], ["settings"], ["build"], ["doctor"],
             ["download", "--models", "resnet-50"],
@@ -94,6 +103,8 @@ def main():
             ["evaluate", "--manifest", "manifest.json"],
             ["up"], ["ps"], ["state", "--watch", "2"], ["reset"],
             ["logs", "--follow"], ["down"],
+            ["bench-summary"], ["bench-summary", "--file", str(saved_csv)],
+            ["preprocess-check"],
         ]
         for command in commands:
             result = subprocess.run([args.bash, script, *command], cwd=ROOT, env=env,
@@ -114,13 +125,17 @@ def main():
             raise RuntimeError("Cold/warm command not routed to the client")
         if not any("proteus_realtime.client" in call and "policy-test" in call for call in calls):
             raise RuntimeError("Policy verification not routed to the client")
+        checks = [call for call in calls if "proteus_realtime.check_preprocessing" in call]
+        if not checks or any("--gpus" in call or call[call.index("--network") + 1] != "none"
+                             or call[call.index("--workers") + 1] != "4" for call in checks):
+            raise RuntimeError("CPU tensor check must be offline, GPU-free and honor worker count")
         if any("infaas-worker" in str(call) for call in logged):
             raise RuntimeError("Unexpected INFaaS runtime/image dependency")
         rootful_uid = f"{getattr(os, 'getuid', lambda: 0)()}:{getattr(os, 'getgid', lambda: 0)()}"
         if any(call[call.index("--user") + 1] != rootful_uid for call in calls):
             raise RuntimeError("Rootful routes did not preserve the login UID")
         offset = len(logged)
-        rootless_commands = [commands[i] for i in (3, 4, 5, 6, 7, 8, 13)]
+        rootless_commands = [commands[i] for i in (3, 4, 5, 6, 7, 8, 13)] + [commands[-1]]
         rootless_env = dict(env, SMOKE_ROOTLESS="1")
         for command in rootless_commands:
             result = subprocess.run([args.bash, script, *command], cwd=ROOT, env=rootless_env,

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import grpc
 
-from .metrics import summarize
+from .metrics import summarize, compact_bench_report
 from .protocol import ADMIN_SERVICE, INFER_METHOD, InferReply, InferRequest
 
 OPTIONS = [("grpc.max_receive_message_length", 32 * 1024 * 1024),
@@ -40,11 +40,16 @@ def query_once(channel, model, image, slo, timeout=180, index=0):
         return {"index": index, "ok": not reply.rejected, "e2e_ms": elapsed,
                 "server_ms": reply.latency, "slo_ms": slo,
                 "slo_met": not reply.rejected and elapsed <= slo,
+                "client_e2e_slo_met": not reply.rejected and elapsed <= slo,
+                "server_slo_met": not reply.rejected and reply.latency <= slo,
+                "server_budget_met": not reply.rejected and reply.latency <= timings.get("worker.server_budget_ms", slo),
                 "load_ms": timings.get("worker.load", 0),
                 "queue_ms": timings.get("worker.queue", 0),
                 "service_ms": timings.get("worker.service", 0),
-                "path": "inactive" if timings.get("worker.model_loaded", 0) else "active",
-                "variant": reply.variant, "batch_size": int(timings.get("worker.batch_size", 1)),
+                "path": "rejected" if reply.rejected else (
+                    "inactive" if timings.get("worker.model_loaded", 0) else "active"),
+                "variant": reply.variant,
+                "batch_size": int(timings.get("worker.batch_size", 0 if reply.rejected else 1)),
                 "label": reply.inference, "gpu": reply.gpu,
                 "request_name": reply.request_name, "reject_kind": reply.reject_kind,
                 "error": reply.reason, "timings": timings}
@@ -52,6 +57,7 @@ def query_once(channel, model, image, slo, timeout=180, index=0):
         return {"index": index, "ok": False,
                 "e2e_ms": (time.perf_counter() - started) * 1000,
                 "server_ms": None, "slo_ms": slo, "slo_met": False,
+                "client_e2e_slo_met": False, "server_slo_met": False, "server_budget_met": False,
                 "load_ms": None, "queue_ms": None, "service_ms": None,
                 "path": "rpc_error", "label": "", "gpu": "", "request_name": "",
                 "variant": "", "batch_size": 0,
@@ -236,7 +242,7 @@ def bench(channel, args, image):
                    "max_client_send_lag_ms": max((r["client_send_lag_ms"] for r in rows), default=0),
                    "runtime": runtime})
     report["runtime_after"] = admin_call(channel, "Status")
-    print(json.dumps(report, indent=2, ensure_ascii=False))
+    print(json.dumps(compact_bench_report(report), indent=2, ensure_ascii=False))
     _write_report(args.output, "bench", rows, report)
     return int(any(not row["ok"] for row in rows) or skipped > 0)
 
@@ -304,7 +310,11 @@ def main(argv=None):
             report = admin_call(channel, "Profile", {
                 "image_base64": base64.b64encode(image).decode(), "trials": args.trials,
                 "models": args.models}, args.timeout)
-            print(json.dumps(report, indent=2, ensure_ascii=False))
+            if report.get("profile_configuration", {}).get("strategy") == "idle-aware-v1":
+                from .profiling import print_summary
+                print_summary(report)
+            else:
+                print(json.dumps(report, indent=2, ensure_ascii=False))
             directory = Path(args.output)
             directory.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")

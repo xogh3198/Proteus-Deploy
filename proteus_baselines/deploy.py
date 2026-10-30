@@ -134,6 +134,31 @@ def register(c, image=None, trials=None):
     return client(c, "profile", image or c["INPUT_IMAGE"], options=["--trials", str(trials or c["PROFILE_TRIALS"])])
 
 
+def trace(c, options):
+    from argparse import ArgumentParser
+    parser = ArgumentParser(add_help=False)
+    parser.add_argument("--trace", default=str(ROOT / "workloads/twitter-resnet-slo200.txt"))
+    known, remaining = parser.parse_known_args(options)
+    path = Path(known.trace).resolve()
+    image = Path(c["INPUT_IMAGE"])
+    if not path.is_file() or not image.is_file():
+        raise ValueError("Existing Proteus trace and JPEG required")
+    image_required(c)
+    directory = Path(c["RESULT_DIR"]) / "trace"
+    directory.mkdir(parents=True, exist_ok=True)
+    args = ["docker", "run", "--rm", "--pull=never", "--user", container_user(),
+        "--network", c["NETWORK_NAME"], "-v", str(path) + ":/inputs/trace.txt:ro",
+        "-v", str(image) + ":/inputs/image.jpg:ro",
+        "-v", c["MODEL_REGISTRY"] + ":/config/replay-models.json:ro",
+        "-v", str(directory) + ":/results", c["WORKER_IMAGE"], "proteus_baselines.trace_replay",
+        "--baseline", c["BASELINE"], "--controller", "baseline-worker:9000",
+        "--application", c["APPLICATION"], "--slo", c["SLO_MS"],
+        "--trace", "/inputs/trace.txt", "--image", "/inputs/image.jpg",
+        "--accuracy-registry", "/config/replay-models.json", "--output", "/results", *remaining]
+    print("Host results:", directory, flush=True)
+    return run(args, allow_failure=True)
+
+
 def compare(args):
     configs = [settings(name) for name in BASELINES]
     if args.image:
@@ -203,7 +228,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("baseline", choices=[*SUPPORTED_BASELINES, "all"])
     parser.add_argument("command", choices=["build", "settings", "download", "seed", "sample", "doctor", "up",
-        "register", "state", "query", "test", "bench", "evaluate", "logs", "down", "compare"])
+        "register", "state", "query", "test", "bench", "trace", "evaluate", "logs", "down", "compare"])
     parser.add_argument("--rates", default="1,5,10")
     parser.add_argument("--duration", type=float, default=30)
     parser.add_argument("--distribution", choices=["uniform", "poisson", "gamma"], default="uniform")
@@ -216,7 +241,7 @@ def main(argv=None):
     parser.add_argument("--from", dest="source")
     parser.add_argument("--manifest", default="manifest.json")
     args, extra = parser.parse_known_args(argv)
-    if extra and args.command not in {"query", "test", "bench", "state", "evaluate"}:
+    if extra and args.command not in {"query", "test", "bench", "trace", "state", "evaluate"}:
         parser.error("Unknown options: " + " ".join(extra))
     if args.command == "compare":
         if args.baseline != "all" or extra:
@@ -238,12 +263,12 @@ def main(argv=None):
             "-t", c["WORKER_IMAGE"], "-f", str(ROOT / "deploy/docker/baselines/worker.Dockerfile"), str(ROOT)])
         print("Verified original sources:", json.dumps(sources))
     elif args.command == "download":
-        model_options = [] if c["BASELINE"] == "sommelier" and not args.models else ["--models", c["MODEL_NAME"]]
+        model_options = [] if c["BASELINE"] in {"sommelier", "infaas-accuracy"} and not args.models else ["--models", c["MODEL_NAME"]]
         oneoff(c, "proteus_realtime.download", "weights", *model_options, online=True)
     elif args.command == "seed":
         if not args.source or not Path(args.source).is_dir() or Path(args.source).resolve() == Path(c["MODEL_DIR"]):
             raise ValueError("--from must be a different existing HF_HOME directory")
-        model_options = [] if c["BASELINE"] == "sommelier" and not args.models else ["--models", c["MODEL_NAME"]]
+        model_options = [] if c["BASELINE"] in {"sommelier", "infaas-accuracy"} and not args.models else ["--models", c["MODEL_NAME"]]
         oneoff(c, "proteus_realtime.download", "seed", "--source", "/source", *model_options,
                online=True, extra_mounts=[str(Path(args.source).resolve()) + ":/source:ro"])
     elif args.command == "sample":
@@ -259,6 +284,10 @@ def main(argv=None):
         down(c)
     elif args.command == "register":
         register(c, args.image, args.trials)
+    elif args.command == "trace":
+        if args.image:
+            c["INPUT_IMAGE"] = str(Path(args.image).resolve())
+        return trace(c, ["--concurrency", str(args.concurrency), *extra]).returncode
     elif args.command == "evaluate":
         if c["BASELINE"] != "sommelier":
             parser.error("Offline evaluation is enabled only for the Sommelier multi-model port")

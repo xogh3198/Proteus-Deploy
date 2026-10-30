@@ -79,8 +79,8 @@ class SommelierExecutor(ProteusExecutor):
         super().set_mode("proteus" if mode == "native" else "fixed")
         return {"mode": mode, "baseline": "sommelier"}
 
-    def profile(self, image, trials=30, models=None):
-        result = super().profile(image, trials, models)
+    def profile(self, image, trials=30, models=None, timeout_s=None):
+        result = super().profile(image, trials, models, timeout_s=timeout_s)
         result["scope"] = "Actual GPU profiles for the fixed-placement Sommelier comparison port"
         return result
 

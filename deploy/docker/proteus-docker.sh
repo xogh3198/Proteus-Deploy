@@ -78,10 +78,13 @@ usage() {
     "현재 터미널의 Docker를 사용합니다. context 변경, sudo, 공용 설정 변경을 하지 않습니다." \
     "  $0 gpus | settings                           # GPU 목록 / 적용 설정" \
     "  $0 build | doctor                            # 이미지 빌드 / CUDA·Gurobi 확인" \
+    "  $0 preprocess-check                          # GPU 없이 직렬/병렬 전처리 텐서 동일성 검사" \
     "  $0 download [--models resnet-50] | sample     # 가중치 / 테스트 JPEG 준비" \
     "  $0 seed --from /existing/HF_HOME [--models resnet-50]  # 가중치 복사" \
     "  $0 up | state [--watch 2] | logs [--follow] | ps | down" \
-    "  $0 register [--models resnet-50] [--image IMAGE] [--trials 30]  # GPU 프로파일" \
+    "  $0 register [--models resnet-50] [--image IMAGE] [--trials 30] [--timeout 900]  # GPU 프로파일" \
+    "  $0 profile-summary                         # 저장된 연속/휴지 후 프로파일 요약" \
+    "  $0 bench-summary [--file RESULT.csv]        # 저장된 CSV의 서버/E2E 지표 구분 (읽기 전용)" \
     "  $0 query imagenet IMAGE 200 [-n 11]          # gRPC 반복 요청" \
     "  $0 test [IMAGE] [--warm-requests 10]         # 고정 배치 1 cold/warm 진단 후 정책 복원" \
     "  $0 policy-test [IMAGE]                      # 실제 배치 > 1과 MILP 연결 검사" \
@@ -108,6 +111,17 @@ case "$command" in
     run_container --rm --pull=never --gpus "device=$GPU" \
       "${CONFIG_MOUNT[@]}" "${MODEL_ENV[@]}" "${LICENSE_MOUNTS[@]}" -v "$MODEL_DIR:/models:ro" \
       "$WORKER_IMAGE" proteus_realtime.doctor
+    ;;
+  preprocess-check)
+    image_required
+    check_image="$(get INPUT_IMAGE)"
+    [[ -f "$check_image" ]] || { echo "Input missing: $check_image" >&2; exit 1; }
+    run_container --rm --pull=never --network none \
+      "${CONFIG_MOUNT[@]}" -v "$MODEL_DIR:/models:ro" \
+      -v "$check_image:/in/image.jpg:ro" \
+      -e "CPU_THREADS=$(get CPU_THREADS)" -e "CPU_INTEROP_THREADS=$(get CPU_INTEROP_THREADS)" \
+      "$WORKER_IMAGE" proteus_realtime.check_preprocessing \
+      --image /in/image.jpg --workers "$(get PREPROCESS_WORKERS)"
     ;;
   download)
     image_required
@@ -159,6 +173,14 @@ case "$command" in
     exit 1
     ;;
   state|reset|mode|evaluate) client "$command" "" "$@" ;;
+  profile-summary) python3 -m proteus_realtime.profiling --summary "$(get PROFILE_PATH)" ;;
+  bench-summary)
+    if [[ $# -eq 0 ]]; then
+      python3 -m proteus_realtime.metrics --results-dir "$DATA_DIR/results"
+    else
+      python3 -m proteus_realtime.metrics "$@"
+    fi
+    ;;
   query)
     [[ $# -ge 3 ]] || { usage; exit 1; }
     model="$1"; image="$2"; slo="$3"; shift 3
@@ -172,6 +194,7 @@ case "$command" in
   register|profile)
     image="$(get INPUT_IMAGE)"
     trials="$(get PROFILE_TRIALS)"
+    profile_timeout="$(get PROFILE_TIMEOUT_S)"
     models=()
     while [[ $# -gt 0 ]]; do
       case "$1" in
@@ -181,12 +204,13 @@ case "$command" in
           [[ ${#models[@]} -gt 0 ]] || { usage; exit 1; } ;;
         --image) [[ $# -ge 2 ]] || { usage; exit 1; }; image="$2"; shift 2 ;;
         --trials) [[ $# -ge 2 ]] || { usage; exit 1; }; trials="$2"; shift 2 ;;
+        --timeout) [[ $# -ge 2 ]] || { usage; exit 1; }; profile_timeout="$2"; shift 2 ;;
         *) echo "Unknown profile option: $1" >&2; exit 1 ;;
       esac
     done
     model_args=()
     if [[ ${#models[@]} -gt 0 ]]; then model_args=(--models "${models[@]}"); fi
-    client profile "$image" --trials "$trials" "${model_args[@]}"
+    client profile "$image" --trials "$trials" --timeout "$profile_timeout" "${model_args[@]}"
     ;;
   logs) docker logs --tail 100 "$@" "$CONTAINER_NAME" ;;
   ps)

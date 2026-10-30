@@ -50,7 +50,8 @@ def create_server(executor, address, threads=16):
                 if method == "Profile":
                     image = base64.b64decode(payload.get("image_base64", ""), validate=True)
                     if isinstance(executor, ProteusExecutor):
-                        return executor.profile(image, payload.get("trials", 30), payload.get("models"))
+                        return executor.profile(image, payload.get("trials", 30), payload.get("models"),
+                                                timeout_s=context.time_remaining())
                     return executor.profile(image, payload.get("trials", 30))
                 if method == "Mode":
                     return executor.set_mode(payload.get("mode"))
@@ -84,13 +85,18 @@ def create_server(executor, address, threads=16):
 def main():
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [proteus-gpu] %(name)s %(message)s")
+    early_drop = os.environ.get("EARLY_DEADLINE_DROP", "1")
+    if early_drop not in {"0", "1"}:
+        raise ValueError("EARLY_DEADLINE_DROP must be 0 or 1")
     backend = GpuRuntime()
     executor = ProteusExecutor(backend, max_queue=int(os.environ.get("MAX_QUEUE_SIZE", "256")),
         profile_path=os.path.join(os.environ.get("PROFILE_DIR", "/profiles"), "profiles.json"),
         slo=float(os.environ.get("SLO_MS", "200")),
         batches=tuple(int(b) for b in os.environ.get("BATCH_SIZES", "1,2,4,8").split(",")),
         interval=float(os.environ.get("ALLOCATION_INTERVAL", "1")),
-        guard_ms=float(os.environ.get("DEADLINE_GUARD_MS", "2")))
+        guard_ms=float(os.environ.get("DEADLINE_GUARD_MS", "2")),
+        rpc_budget_ms=float(os.environ.get("RPC_BUDGET_MS", "0")),
+        early_deadline_drop=early_drop == "1")
     server, _ = create_server(executor, "0.0.0.0:" + os.environ.get("WORKER_PORT", "9000"),
                               int(os.environ.get("RPC_THREADS", "16")))
     server.start()

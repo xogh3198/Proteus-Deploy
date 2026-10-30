@@ -23,9 +23,11 @@ log = logging.getLogger("proteus.baselines")
 
 
 class BaselineExecutor:
+    supports_multiple_models = False
+
     def __init__(self, backend, baseline, profile_path=None, slo=200, batches=(1, 2, 4, 8),
                  max_queue=256, interval=10.0):
-        if baseline not in BASELINES or len(backend.enabled) != 1:
+        if baseline not in BASELINES or (len(backend.enabled) != 1 and not self.supports_multiple_models):
             raise ValueError("Select a supported baseline and exactly one enabled checkpoint")
         self.backend, self.baseline = backend, baseline
         self.slo, self.batches, self.max_queue = float(slo), tuple(batches), int(max_queue)
@@ -132,7 +134,7 @@ class BaselineExecutor:
                     reject_kind=kind, reason=reason, gpu=self.backend.gpu_type,
                     latency=self.clock_ms() - job.arrival * 1000))
 
-    def launch(self, events, nominal_finish_ms=None):
+    def launch(self, events, nominal_finish_ms=None, model_name=None):
         if self.busy:
             raise RuntimeError("Original policy attempted overlapping GPU batches")
         jobs = [self.jobs[e.id] for e in events if e.id in self.jobs]
@@ -142,16 +144,19 @@ class BaselineExecutor:
         for job in jobs:
             job.future.set_running_or_notify_cancel()
         mode = self.mode
-        future = self.pool.submit(self._gpu, jobs, mode)
+        future = self.pool.submit(self._gpu, jobs, mode, model_name)
         def done(result):
             with self.condition:
                 self.completed.append((events, jobs, result))
                 self.condition.notify_all()
         future.add_done_callback(done)
 
-    def _gpu(self, jobs, mode):
+    def _gpu(self, jobs, mode, model_name=None):
+        selected = model_name or self.backend.model_name
         started = time.perf_counter()
-        loaded = self.backend.load(self.backend.model_name)
+        previous = getattr(self.backend, "current", None)
+        loaded = self.backend.load(selected)
+        self._model_loaded(selected, previous, loaded, len(jobs))
         service_start = time.perf_counter()
         results = self.backend.infer_prepared([job.prepared for job in jobs])
         finished = time.perf_counter()
@@ -170,12 +175,15 @@ class BaselineExecutor:
             timings.update({"worker." + key: value for key, value in loaded.get("stages", {}).items()})
             width, height = result["image_size"]
             replies.append(InferReply(request_name=job.name, inference=result["label"],
-                latency=latency, gpu=self.backend.gpu_type, variant=self.backend.model_name,
+                latency=latency, gpu=self.backend.gpu_type, variant=selected,
                 worker_ms=(finished - started) * 1000, img_width=width, img_height=height,
                 timings=timings, arrive_epoch_ms=job.arrival_epoch_ms, reply_epoch_ms=time.time() * 1000))
         log.info("GPU baseline=%s mode=%s actual_batch=%d load=%.2f service=%.2f",
                  self.baseline, mode, len(jobs), loaded["load_ms"], (finished - service_start) * 1000)
         return replies
+
+    def _model_loaded(self, selected, previous, loaded, count):
+        """Optional instrumentation hook; singleton policy behavior is unchanged."""
 
     def _complete(self):
         while self.completed:

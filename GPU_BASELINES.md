@@ -1,5 +1,8 @@
 # Proteus 내부 비교 기준선 — 독립 GPU 실행
 
+INFaaS-Accuracy의 **세 모델 자동 선택·동일 Twitter 트레이스 실행**은
+[INFAAS_THREE_MODEL.md](INFAAS_THREE_MODEL.md)를 사용합니다. 기존 singleton 설정은 유지됩니다.
+
 Sommelier는 추가 GPU 실행 종류이며 **[전용 가이드](SOMMELIER_GPU.md)**를 사용합니다.
 이 문서의 기존 단일 모델 3개와 `all compare` 동작은 그대로 유지합니다.
 

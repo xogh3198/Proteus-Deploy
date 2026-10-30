@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 from .registry import load_registry
+from .profiling import ProfileOptions
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ENV = ROOT / "deploy/docker/proteus-docker.env"
@@ -60,6 +61,9 @@ def settings(env_file=None):
         ("CPU_INTEROP_THREADS", 1, 128), ("PREPROCESS_WORKERS", 1, 32)]:
         if not low <= int(values[key]) <= high:
             raise ValueError(f"{key} must be in {low}..{high}")
+    ProfileOptions.from_env(values)
+    if not math.isfinite(float(values["PROFILE_TIMEOUT_S"])) or float(values["PROFILE_TIMEOUT_S"]) <= 0:
+        raise ValueError("PROFILE_TIMEOUT_S must be finite and positive")
     for key in ("SLO_MS", "ALLOCATION_INTERVAL", "INITIAL_RATE"):
         if not math.isfinite(float(values[key])) or float(values[key]) <= 0:
             raise ValueError(f"{key} must be finite and positive")
@@ -67,13 +71,19 @@ def settings(env_file=None):
         raise ValueError("EWMA_ALPHA must be in (0,1]")
     if not 0 <= float(values["DEADLINE_GUARD_MS"]) < float(values["SLO_MS"]):
         raise ValueError("DEADLINE_GUARD_MS must be in [0,SLO)")
+    rpc_budget = float(values["RPC_BUDGET_MS"])
+    if not math.isfinite(rpc_budget) or not 0 <= rpc_budget < float(values["SLO_MS"]):
+        raise ValueError("RPC_BUDGET_MS must be finite and in [0,SLO)")
+    if rpc_budget + float(values["DEADLINE_GUARD_MS"]) >= float(values["SLO_MS"]):
+        raise ValueError("RPC_BUDGET_MS + DEADLINE_GUARD_MS must be less than SLO_MS")
     batches = [int(b) for b in values["BATCH_SIZES"].split(",")]
     if batches != sorted(set(batches)) or not batches or batches[0] != 1 or any(b > 64 or b & (b - 1) for b in batches):
         raise ValueError("BATCH_SIZES must be sorted powers of two, include 1, and stay <=64")
     if values["BIND_ADDRESS"] != "127.0.0.1":
         raise ValueError("This unauthenticated API must bind to 127.0.0.1")
-    if values["ALLOW_GPU_SHARING"] not in {"0", "1"}:
-        raise ValueError("ALLOW_GPU_SHARING must be 0 or 1")
+    for key in ("ALLOW_GPU_SHARING", "EARLY_DEADLINE_DROP"):
+        if values[key] not in {"0", "1"}:
+            raise ValueError(key + " must be 0 or 1")
     if values["MODEL_DIR"] == "auto" or "infaas" in values["WORKER_IMAGE"].lower():
         raise ValueError("Use a standalone Proteus cache and image, not bootstrap settings")
     for key in ("GPU_TYPE", "NETWORK_NAME", "CONTAINER_NAME", "APPLICATION"):
@@ -90,6 +100,8 @@ def settings(env_file=None):
         if not Path(values["GUROBI_LICENSE_FILE"]).is_file():
             raise ValueError("GUROBI_LICENSE_FILE does not exist (do not share its contents)")
     values["ROOT"], values["ENV_FILE"] = str(ROOT), str(path)
+    values["PROFILE_PATH"] = str(Path(values["DATA_DIR"]) / "profiles" /
+                                 ProfileOptions.from_env(values).directory / "profiles.json")
     return values
 
 
@@ -112,11 +124,13 @@ def compose_document(values, user=None):
     environment = {key: values[key] for key in [
         "GPU_TYPE", "MODEL_NAME", "MODEL_ID", "MODEL_REVISION", "APPLICATION", "WARMUP_QUERIES", "CPU_THREADS",
         "RPC_THREADS", "MAX_QUEUE_SIZE", "SLO_MS", "BATCH_SIZES", "CPU_INTEROP_THREADS", "PREPROCESS_WORKERS",
-        "ALLOCATION_INTERVAL", "EWMA_ALPHA", "INITIAL_RATE", "DEADLINE_GUARD_MS"]}
+        "ALLOCATION_INTERVAL", "EWMA_ALPHA", "INITIAL_RATE", "DEADLINE_GUARD_MS", "RPC_BUDGET_MS",
+        "PROFILE_STRATEGY", "PROFILE_IDLE_GAPS_MS", "PROFILE_PREDICTION_PERCENTILE", "EARLY_DEADLINE_DROP"]}
     environment.update({"HF_HOME": "/models", "TORCH_HOME": "/models",
         "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
         "WORKER_PORT": "9000", "MODEL_REGISTRY": "/config/models.json",
-        "PROFILE_DIR": "/profiles/cpu-ready-v1", "EVAL_DIR": "/eval", "PYTHONUNBUFFERED": "1"})
+        "PROFILE_DIR": "/profiles/" + ProfileOptions.from_env(values).directory,
+        "EVAL_DIR": "/eval", "PYTHONUNBUFFERED": "1"})
     volumes = [
         {"type": "bind", "source": values["MODEL_DIR"], "target": "/models", "read_only": True},
         {"type": "bind", "source": values["MODEL_REGISTRY"], "target": "/config/models.json", "read_only": True},

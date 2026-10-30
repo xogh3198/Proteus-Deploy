@@ -6,6 +6,7 @@ Single GPU makes routing z=1; the bilinear objective reduces to a linear MILP.
 import math
 import time
 from dataclasses import dataclass, asdict
+from .profiling import execution_latency_ms
 
 
 @dataclass
@@ -35,7 +36,7 @@ def solve_milp(profiles, accuracies, demand, slo_ms, beta=1.0, minimum_beta=0.2,
     candidates = {}
     for name, profile in profiles.items():
         valid = [int(size) for size, row in profile["batches"].items()
-                 if float(row["p50_ms"]) < slo_ms / 2]
+                 if execution_latency_ms(row) < slo_ms / 2]
         if valid:
             batch = max(valid)
             latency = float(profile["batches"][str(batch)]["p50_ms"])
@@ -87,6 +88,7 @@ def adaptive_decision(deadlines, latencies_ms, max_batch, now, guard_ms=2.0):
     """Non-work-conserving accscale: wait until head deadline minus batch time.
 
     deadlines are monotonic seconds. Only fully filled profiled sizes are used.
+    latencies_ms carries the configured execution prediction, not necessarily P50.
     """
     if not deadlines:
         return BatchDecision("idle")

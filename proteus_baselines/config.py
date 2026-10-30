@@ -17,15 +17,18 @@ EXPECTED_SOURCES = {
     "core/common.py": "095fa65ee2863c11b1bc67728af05529bf9843f7159c55484cae37818f7c6192",
     "core/exceptions.py": "c17125b08ea6890a000b7315b378de2a46b449b4439738a7d096f27cf18a8790",
     "algorithms/clipper.py": "d1397a04e699648be5bc47e5b9061e30783a3498b8a8158e10c45fb5b7e9c013",
-    "proteus_realtime/runtime.py": "c5d52bda6ed4a839c1594916d4ed2e7d215bc34ccde568833253cb47bd502991",
-    "proteus_realtime/pipeline.py": "1d9a0a0a9cadffdd9733e77fbca34e347359eab5b14446fd4dccf43d23e3fb65",
+    "proteus_realtime/runtime.py": "9170282284d1b798ff39986ee4a401782374a9aca20becbd114ff3b2bcbf2e0f",
+    "proteus_realtime/pipeline.py": "fd69c2ec4f2a9876a920a17253e5aa4d86a40d67459010c29ecc277be537564e",
     "proteus_realtime/service.py": "e9e3304b4db4da59970856792780fa0d5ddaba084e9d494cb5ea1bfc5cd52d44",
 }
 SOMMELIER_SOURCES = {
     "run.py": "d7daee55c9eab63456b4cbce4d2641088cee90464581417ea6b11dc0dbcaeaa7",
     "algorithms/ilp.py": "0f448fe0a9b703b8d9a1e0e963669a5d016428d5fcca09c4eb49c505fb3cef33",
-    "proteus_realtime/policy.py": "bb589d37fdfe25523ab1a1f90b2f638cf39d537f198913d24396d9d9ee2bd865",
-    "proteus_realtime/serving.py": "04a295959c3d8b40174d616087a57db8e18fc6d1007f2532171d5d72d09abaad",
+    # Shared port: opt-in idle-aware profiles/RPC reserve. Sommelier's reserve
+    # stays zero unless explicitly passed; original core/ILP remain unchanged.
+    "proteus_realtime/policy.py": "8b611439391845bb8059e70e636f7b9cad08d452c352ff8f173e38bccd599fcb",
+    "proteus_realtime/serving.py": "9b5c2513eb257b3e0de5baa9b7ad6c444fdcd8babf1667076bf1fdaa30f37c10",
+    "proteus_realtime/profiling.py": "09d04c528606b31832f16ae8dfc7352a399ba78cfd83d8740724d1d631ca4bc7",
 }
 
 
@@ -84,10 +87,14 @@ def settings(baseline, root=ROOT):
     registry = load_registry(values["MODEL_REGISTRY"], values["MODEL_NAME"],
                              values["MODEL_ID"], values["MODEL_REVISION"])
     enabled = {name: item for name, item in registry.items() if item.get("enabled", True)}
-    if sommelier:
+    if sommelier or baseline == "infaas-accuracy":
         if values["MODEL_NAME"] not in enabled or any(not re.fullmatch(r"[0-9a-f]{40}", item.get("revision", ""))
                                                        for item in enabled.values()):
-            raise ValueError("Sommelier needs enabled pinned models and an enabled MODEL_NAME")
+            raise ValueError("Model selection needs enabled pinned models and an enabled MODEL_NAME")
+        if baseline == "infaas-accuracy" and len(enabled) > 1:
+            from proteus_realtime.registry import normalized_accuracies
+            normalized_accuracies(enabled)
+    if sommelier:
         for key in ("INITIAL_RATE", "ALLOCATION_INTERVAL"):
             if not math.isfinite(float(values[key])) or float(values[key]) <= 0:
                 raise ValueError("Invalid Sommelier setting: " + key)
@@ -100,8 +107,8 @@ def settings(baseline, root=ROOT):
             values["GUROBI_LICENSE_FILE"] = str((root / Path(values["GUROBI_LICENSE_FILE"]).expanduser()).resolve())
             if not Path(values["GUROBI_LICENSE_FILE"]).is_file():
                 raise ValueError("GUROBI_LICENSE_FILE does not exist")
-    elif set(enabled) != {values["MODEL_NAME"]} or not re.fullmatch(
-            r"[0-9a-f]{40}", enabled[values["MODEL_NAME"]].get("revision", "")):
+    elif baseline != "infaas-accuracy" and (set(enabled) != {values["MODEL_NAME"]} or not re.fullmatch(
+            r"[0-9a-f]{40}", enabled[values["MODEL_NAME"]].get("revision", ""))):
         raise ValueError("Use exactly one enabled pinned singleton model matching MODEL_NAME")
     values.update({"BASELINE": baseline, "ROOT": str(root), "PORT": "19084" if sommelier else str(19081 + BASELINES.index(baseline)),
         "PROJECT": "proteus-baseline-" + baseline, "NETWORK_NAME": "proteus-baseline-" + baseline,

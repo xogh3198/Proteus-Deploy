@@ -5,6 +5,10 @@
 CPU 전처리 → 텐서 큐 → GPU 실행으로 갱신한 버전의 재빌드·재프로파일링은
 [CPU_READY_PIPELINE.md](CPU_READY_PIPELINE.md)를 먼저 확인하세요.
 기존 설정 보존 보정 패치와 전체 실험 조건: [EXPERIMENT_SETTINGS.md](EXPERIMENT_SETTINGS.md).
+연속/휴지 후 실행시간을 구분하는 선택형 프로파일링: [IDLE_AWARE_PROFILING.md](IDLE_AWARE_PROFILING.md).
+E2E SLO와 별도 RPC 시간 예산: [RPC_BUDGET.md](RPC_BUDGET.md). 기본 `RPC_BUDGET_MS=0`은 기존 동작을 유지합니다.
+전처리기 공유 잠금·만료 처리 보정: [CPU_DEADLINE_FIX.md](CPU_DEADLINE_FIX.md).
+INFaaS-Accuracy 세 후보·동일 2배속 트레이스: [INFAAS_THREE_MODEL.md](INFAAS_THREE_MODEL.md).
 
 ## 1. 코드와 Docker 확인
 

@@ -12,10 +12,12 @@ from collections import deque
 
 
 class CpuStage:
-    def __init__(self, backend, condition, ready, failed):
+    def __init__(self, backend, condition, ready, failed, before_prepare=None):
         self.backend, self.condition = backend, condition
         self.ready, self.failed = ready, failed
         self.pending, self.completed = deque(), {}
+        self.pending_names, self.active, self.tasks = set(), set(), {}
+        self.before_prepare = before_prepare
         workers = int(os.environ.get("PREPROCESS_WORKERS", "1"))
         if not 1 <= workers <= 32:
             raise ValueError("PREPROCESS_WORKERS must be in 1..32")
@@ -26,29 +28,59 @@ class CpuStage:
     def submit(self, job):
         # Called with the owner's condition held.
         self.pending.append(job)
-        self.pool.submit(self._prepare, job)
+        self.pending_names.add(job.name)
+        # The owner holds condition, so the task cannot race this assignment.
+        self.tasks[job.name] = self.pool.submit(self._prepare, job)
+
+    def discard(self, job):
+        """Owner-condition held: detach expired work, cancel queued CPU work.
+
+        An already-running CPU call is not interrupted. Its eventual output is
+        discarded; active continues to protect maintenance until it returns.
+        """
+        self.pending_names.discard(job.name)
+        self.pending = deque(item for item in self.pending if item.name != job.name)
+        self.completed.pop(job.name, None)
+        task = self.tasks.pop(job.name, None)
+        if task is not None:
+            task.cancel()
+
+    def promote(self):
+        """Promote surviving completions in original FIFO admission order."""
+        while self.pending and self.pending[0].name in self.completed:
+            item = self.pending.popleft()
+            self.pending_names.discard(item.name)
+            failure = self.completed.pop(item.name)
+            if failure is not None:
+                self.failed(item, failure)
+            else:
+                self.ready(item)
 
     def _prepare(self, job):
         error = None
         try:
-            if job.future.cancelled():
-                raise concurrent.futures.CancelledError()
-            job.cpu_started = time.perf_counter()
+            with self.condition:
+                if job.name not in self.pending_names or job.future.done():
+                    raise concurrent.futures.CancelledError()
+                if self.before_prepare is not None and not self.before_prepare(job):
+                    raise concurrent.futures.CancelledError()
+                job.cpu_started = time.perf_counter()
+                self.active.add(job.name)
             job.prepared = self.backend.prepare(job.request.image)
         except Exception as caught:
             error = caught
         finally:
-            job.cpu_finished = time.perf_counter()
+            finished = time.perf_counter() if job.cpu_started else 0.0
         with self.condition:
-            self.completed[job.name] = error
-            # Multiple CPU workers must not reorder original FIFO admissions.
-            while self.pending and self.pending[0].name in self.completed:
-                item = self.pending.popleft()
-                failure = self.completed.pop(item.name)
-                if failure is not None:
-                    self.failed(item, failure)
-                else:
-                    self.ready(item)
+            job.cpu_finished = finished
+            self.active.discard(job.name)
+            self.tasks.pop(job.name, None)
+            if job.name in self.pending_names:
+                self.completed[job.name] = error
+                self.promote()
+            else:
+                # Deadline/cancellation already resolved the client future.
+                job.prepared = None
             self.condition.notify_all()
 
     def close(self):
