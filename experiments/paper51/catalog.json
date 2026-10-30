@@ -1,0 +1,752 @@
+{
+  "schema": "proteus-paper-51-v1",
+  "paper_url": "https://groups.cs.umass.edu/ramesh/wp-content/uploads/sites/3/2023/09/ljWiUS-asplos24spring-final29.pdf",
+  "upstream_repository": "https://github.com/UMass-LIDS/Proteus",
+  "upstream_commit": "6967c9327e66f6d6fe94993dcaa7521efc2f72f5",
+  "total_groups": 9,
+  "total_variants": 51,
+  "experiment_precision": "fp16",
+  "physical_gpus": 1,
+  "gpu_model": "Tesla V100 32GB",
+  "original_runtime": "ONNX Runtime CPU/CUDA Execution Provider",
+  "weights_note": "Upstream artifact contains no model weights or task input contracts. Names and supplied reference scores do not identify exact checkpoints.",
+  "accuracy_note": "Reference scores are policy inputs, not measured correctness of reconstructed checkpoints. Missing five scores must not be interpolated.",
+  "models": [
+    {
+      "group": "bert",
+      "name": "albert-base-v2",
+      "public_artifact": true,
+      "reference_accuracy": 95.97107438,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "albert-large-v2",
+      "public_artifact": true,
+      "reference_accuracy": 98.03719008,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "albert-xlarge-v2",
+      "public_artifact": true,
+      "reference_accuracy": 98.55371901,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "albert-xxlarge-v2",
+      "public_artifact": true,
+      "reference_accuracy": 100,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "bert-base-uncased",
+      "public_artifact": true,
+      "reference_accuracy": 96.59090909,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "bert-large-uncased",
+      "public_artifact": true,
+      "reference_accuracy": 98.03719008,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "prajjwal1/bert-medium",
+      "public_artifact": true,
+      "reference_accuracy": 92.56198347,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "prajjwal1/bert-mini",
+      "public_artifact": true,
+      "reference_accuracy": 88.73966942,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "prajjwal1/bert-small",
+      "public_artifact": true,
+      "reference_accuracy": 92.66528926,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "prajjwal1/bert-tiny",
+      "public_artifact": true,
+      "reference_accuracy": 85.95041322,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "roberta-base",
+      "public_artifact": true,
+      "reference_accuracy": 97.9338843,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "bert",
+      "name": "roberta-large",
+      "public_artifact": true,
+      "reference_accuracy": 99.58677686,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/bert"
+    },
+    {
+      "group": "densenet",
+      "name": "densenet121",
+      "public_artifact": true,
+      "reference_accuracy": 96.48648649,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/densenet"
+    },
+    {
+      "group": "densenet",
+      "name": "densenet161",
+      "public_artifact": true,
+      "reference_accuracy": 100,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/densenet"
+    },
+    {
+      "group": "densenet",
+      "name": "densenet169",
+      "public_artifact": true,
+      "reference_accuracy": 98.03088803,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/densenet"
+    },
+    {
+      "group": "densenet",
+      "name": "densenet201",
+      "public_artifact": true,
+      "reference_accuracy": 99.51093951,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/densenet"
+    },
+    {
+      "group": "efficientnet",
+      "name": "efficientnet-b0",
+      "public_artifact": true,
+      "reference_accuracy": 91.45907473,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/efficientnet"
+    },
+    {
+      "group": "efficientnet",
+      "name": "efficientnet-b1",
+      "public_artifact": true,
+      "reference_accuracy": 93.83155397,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/efficientnet"
+    },
+    {
+      "group": "efficientnet",
+      "name": "efficientnet-b2",
+      "public_artifact": false,
+      "reference_accuracy": null,
+      "accuracy_kind": "unavailable-in-public-artifact",
+      "accuracy_source": null
+    },
+    {
+      "group": "efficientnet",
+      "name": "efficientnet-b3",
+      "public_artifact": true,
+      "reference_accuracy": 96.79715302,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/efficientnet"
+    },
+    {
+      "group": "efficientnet",
+      "name": "efficientnet-b4",
+      "public_artifact": false,
+      "reference_accuracy": null,
+      "accuracy_kind": "unavailable-in-public-artifact",
+      "accuracy_source": null
+    },
+    {
+      "group": "efficientnet",
+      "name": "efficientnet-b5",
+      "public_artifact": true,
+      "reference_accuracy": 99.16963227,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/efficientnet"
+    },
+    {
+      "group": "efficientnet",
+      "name": "efficientnet-b6",
+      "public_artifact": false,
+      "reference_accuracy": null,
+      "accuracy_kind": "unavailable-in-public-artifact",
+      "accuracy_source": null
+    },
+    {
+      "group": "efficientnet",
+      "name": "efficientnet-b7",
+      "public_artifact": true,
+      "reference_accuracy": 100,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/efficientnet"
+    },
+    {
+      "group": "gpt2",
+      "name": "gpt2",
+      "public_artifact": true,
+      "reference_accuracy": 93.65524986,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/gpt2"
+    },
+    {
+      "group": "gpt2",
+      "name": "gpt2-large",
+      "public_artifact": true,
+      "reference_accuracy": 98.82088714,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/gpt2"
+    },
+    {
+      "group": "gpt2",
+      "name": "gpt2-medium",
+      "public_artifact": true,
+      "reference_accuracy": 97.81021898,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/gpt2"
+    },
+    {
+      "group": "gpt2",
+      "name": "gpt2-xl",
+      "public_artifact": true,
+      "reference_accuracy": 100,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/gpt2"
+    },
+    {
+      "group": "mobilenet",
+      "name": "mobilenet0.25",
+      "public_artifact": true,
+      "reference_accuracy": 72.20251092,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/mobilenet"
+    },
+    {
+      "group": "mobilenet",
+      "name": "mobilenet0.5",
+      "public_artifact": true,
+      "reference_accuracy": 88.97379913,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/mobilenet"
+    },
+    {
+      "group": "mobilenet",
+      "name": "mobilenet0.75",
+      "public_artifact": true,
+      "reference_accuracy": 95.86517467,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/mobilenet"
+    },
+    {
+      "group": "mobilenet",
+      "name": "mobilenet1.0",
+      "public_artifact": true,
+      "reference_accuracy": 100,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/mobilenet"
+    },
+    {
+      "group": "resnest",
+      "name": "resnest14",
+      "public_artifact": true,
+      "reference_accuracy": 89.61315509,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/resnest"
+    },
+    {
+      "group": "resnest",
+      "name": "resnest26",
+      "public_artifact": true,
+      "reference_accuracy": 93.0793801,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/resnest"
+    },
+    {
+      "group": "resnest",
+      "name": "resnest269",
+      "public_artifact": true,
+      "reference_accuracy": 100,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/resnest"
+    },
+    {
+      "group": "resnest",
+      "name": "resnest50",
+      "public_artifact": true,
+      "reference_accuracy": 95.8712883,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/resnest"
+    },
+    {
+      "group": "resnet",
+      "name": "resnet101_v1",
+      "public_artifact": true,
+      "reference_accuracy": 98.8891694,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/resnet"
+    },
+    {
+      "group": "resnet",
+      "name": "resnet152_v1",
+      "public_artifact": true,
+      "reference_accuracy": 100,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/resnet"
+    },
+    {
+      "group": "resnet",
+      "name": "resnet18_v1",
+      "public_artifact": true,
+      "reference_accuracy": 89.53547084,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/resnet"
+    },
+    {
+      "group": "resnet",
+      "name": "resnet34_v1",
+      "public_artifact": true,
+      "reference_accuracy": 93.87780863,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/resnet"
+    },
+    {
+      "group": "resnet",
+      "name": "resnet50_v1",
+      "public_artifact": true,
+      "reference_accuracy": 97.65210805,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/resnet"
+    },
+    {
+      "group": "t5",
+      "name": "t5-11b",
+      "public_artifact": false,
+      "reference_accuracy": null,
+      "accuracy_kind": "unavailable-in-public-artifact",
+      "accuracy_source": null
+    },
+    {
+      "group": "t5",
+      "name": "t5-3b",
+      "public_artifact": false,
+      "reference_accuracy": null,
+      "accuracy_kind": "unavailable-in-public-artifact",
+      "accuracy_source": null
+    },
+    {
+      "group": "t5",
+      "name": "t5-base",
+      "public_artifact": true,
+      "reference_accuracy": 96.26168224,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/t5"
+    },
+    {
+      "group": "t5",
+      "name": "t5-large",
+      "public_artifact": true,
+      "reference_accuracy": 99.68847352,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/t5"
+    },
+    {
+      "group": "t5",
+      "name": "t5-small",
+      "public_artifact": true,
+      "reference_accuracy": 83.17757009,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/t5"
+    },
+    {
+      "group": "yolo",
+      "name": "yolov5l",
+      "public_artifact": true,
+      "reference_accuracy": 96.6469428,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/yolo"
+    },
+    {
+      "group": "yolo",
+      "name": "yolov5m",
+      "public_artifact": true,
+      "reference_accuracy": 73.76725838,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/yolo"
+    },
+    {
+      "group": "yolo",
+      "name": "yolov5n",
+      "public_artifact": true,
+      "reference_accuracy": 55.22682446,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/yolo"
+    },
+    {
+      "group": "yolo",
+      "name": "yolov5s",
+      "public_artifact": true,
+      "reference_accuracy": 89.54635108,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/yolo"
+    },
+    {
+      "group": "yolo",
+      "name": "yolov5x",
+      "public_artifact": true,
+      "reference_accuracy": 100,
+      "accuracy_kind": "public-normalized-reference",
+      "accuracy_source": "traces/model_variants/yolo"
+    }
+  ],
+  "clipper_fixed": {
+    "ha": {
+      "source": "algorithms/clipper_solutions/clipper_highacc_optimized.txt",
+      "models": [
+        "albert-xxlarge-v2",
+        "densenet201",
+        "efficientnet-b7",
+        "gpt2-medium",
+        "mobilenet1.0",
+        "resnest269",
+        "resnet152_v1",
+        "t5-base",
+        "yolov5x"
+      ]
+    },
+    "ht": {
+      "source": "algorithms/clipper_solutions/clipper_lowacc_optimized.txt",
+      "models": [
+        "densenet121",
+        "efficientnet-b0",
+        "gpt2",
+        "mobilenet0.25",
+        "prajjwal1/bert-tiny",
+        "resnest14",
+        "resnet18_v1",
+        "t5-small",
+        "yolov5n"
+      ]
+    }
+  },
+  "trace_sets": {
+    "zipf_exponential": {
+      "bert": {
+        "requests": 6845,
+        "last_arrival_ms": 289435,
+        "slo_values": [
+          300
+        ],
+        "sha256": "38adb9b19d33c59207dad8855a5374d875ce5a93f2e40922c6a79267925d66fa"
+      },
+      "densenet": {
+        "requests": 4311,
+        "last_arrival_ms": 290118,
+        "slo_values": [
+          300
+        ],
+        "sha256": "4341e532c3b3e9417fab5125389ab3339fc2c8a8f5f0a3fd606c8f362e965c65"
+      },
+      "efficientnet": {
+        "requests": 13214,
+        "last_arrival_ms": 289774,
+        "slo_values": [
+          300
+        ],
+        "sha256": "462b94b8a0bab8989b028f3c8292ba964f235212101b3cc0fc8080a95c32c8e9"
+      },
+      "gpt2": {
+        "requests": 2878,
+        "last_arrival_ms": 290621,
+        "slo_values": [
+          300
+        ],
+        "sha256": "b0772278bc8649c62c1eabd98a1785b51bf5539dbf385b0090d1c7813dfa36fb"
+      },
+      "mobilenet": {
+        "requests": 26753,
+        "last_arrival_ms": 290020,
+        "slo_values": [
+          300
+        ],
+        "sha256": "a0df133a4e13e5c48f448b892beee3a7480596371de5aa773dfc19536782910b"
+      },
+      "resnest": {
+        "requests": 9117,
+        "last_arrival_ms": 290482,
+        "slo_values": [
+          300
+        ],
+        "sha256": "2afd4f6d8f8b590a2b7aeff7925aab6abb13690e61529c350320b3fbcf46b576"
+      },
+      "resnet": {
+        "requests": 3776,
+        "last_arrival_ms": 290308,
+        "slo_values": [
+          300
+        ],
+        "sha256": "0ca98ee0c331daf005f165386942b85b574ea16b316d2b45ec57cdb1d6293755"
+      },
+      "t5": {
+        "requests": 3171,
+        "last_arrival_ms": 290246,
+        "slo_values": [
+          300
+        ],
+        "sha256": "b1b8272bcb682e70983f078486874cdde9da6ce2ff2a5ca8c8812713133c59f1"
+      },
+      "yolo": {
+        "requests": 5188,
+        "last_arrival_ms": 289673,
+        "slo_values": [
+          300
+        ],
+        "sha256": "7e343609c29062d4468c08108903df86c0edcc692ead478591cfbd0683b4fbb4"
+      }
+    },
+    "zipf_exponential_bursty": {
+      "bert": {
+        "requests": 15312,
+        "last_arrival_ms": 291049,
+        "slo_values": [
+          300
+        ],
+        "sha256": "62ae91cfe743760a3cb8887ca12298e5073a0cf0ed4e3500c564f104e8f7c5b8"
+      },
+      "densenet": {
+        "requests": 10354,
+        "last_arrival_ms": 290903,
+        "slo_values": [
+          300
+        ],
+        "sha256": "30f9ec1f509307c11a1b2faeadfcc27fbe8856fab6e78e6e84dfededab93f4c4"
+      },
+      "efficientnet": {
+        "requests": 31223,
+        "last_arrival_ms": 291210,
+        "slo_values": [
+          300
+        ],
+        "sha256": "37a0b1d037a65c5b040f407d711f5e52cf61c2cbd6d01b079d691e842c3d5e52"
+      },
+      "gpt2": {
+        "requests": 7044,
+        "last_arrival_ms": 291056,
+        "slo_values": [
+          300
+        ],
+        "sha256": "70c15c8e43b356c2896915768669a9b2c9241989b64bc2e52c90cfb7e10c36e7"
+      },
+      "mobilenet": {
+        "requests": 62413,
+        "last_arrival_ms": 290698,
+        "slo_values": [
+          300
+        ],
+        "sha256": "d50764227a41538993b411cf9822edbd2a878a162191bf8b4e0187923ee11cd3"
+      },
+      "resnest": {
+        "requests": 20644,
+        "last_arrival_ms": 291089,
+        "slo_values": [
+          300
+        ],
+        "sha256": "9e7becc15f21e92b5820128346cb93b016b5b6831a19de55a09d12171de4dd80"
+      },
+      "resnet": {
+        "requests": 8309,
+        "last_arrival_ms": 290444,
+        "slo_values": [
+          300
+        ],
+        "sha256": "21129ab63e27ee647dff89e6243dda9f258680e7aea1753a3e8b00c58d56c968"
+      },
+      "t5": {
+        "requests": 7853,
+        "last_arrival_ms": 290838,
+        "slo_values": [
+          300
+        ],
+        "sha256": "ae3bb8eace4f42f0cea5d67400603044dbb674c7e457924cf7bdd913781a2fee"
+      },
+      "yolo": {
+        "requests": 12666,
+        "last_arrival_ms": 290999,
+        "slo_values": [
+          300
+        ],
+        "sha256": "6c97ecab5cef9a9996359d5225c45f2aad5d70972177b49906e864f211162d47"
+      }
+    },
+    "zipf_uniform": {
+      "bert": {
+        "requests": 6658,
+        "last_arrival_ms": 289996,
+        "slo_values": [
+          300
+        ],
+        "sha256": "d3ee1945acd36e7da852403886e86b3cdf5e3dfff84ef4181872bbb0b79eddfa"
+      },
+      "densenet": {
+        "requests": 4609,
+        "last_arrival_ms": 290000,
+        "slo_values": [
+          300
+        ],
+        "sha256": "5db56cbe9055207696dd2f20642bb015571e46d16f18c2fe2d94faabf15a1a78"
+      },
+      "efficientnet": {
+        "requests": 13171,
+        "last_arrival_ms": 289996,
+        "slo_values": [
+          300
+        ],
+        "sha256": "945f4960dd8ce7aad5942d3be63776d864759ad55d8ae1f7feda8976c1efd9c1"
+      },
+      "gpt2": {
+        "requests": 2947,
+        "last_arrival_ms": 289999,
+        "slo_values": [
+          300
+        ],
+        "sha256": "e37def42a2d51b8b0cd1d7bc4339e5d6552eb319882a1bcad11a848eb795dba1"
+      },
+      "mobilenet": {
+        "requests": 26525,
+        "last_arrival_ms": 289984,
+        "slo_values": [
+          300
+        ],
+        "sha256": "7401b5246535377531f453a1296acde6c5b0261961d85530c7efe5e37703c132"
+      },
+      "resnest": {
+        "requests": 8929,
+        "last_arrival_ms": 290000,
+        "slo_values": [
+          300
+        ],
+        "sha256": "99cc6414f00f9fd937c20ef36e008aaf1f6e8c2fa97f8747248b3d89a2a798db"
+      },
+      "resnet": {
+        "requests": 3590,
+        "last_arrival_ms": 289999,
+        "slo_values": [
+          300
+        ],
+        "sha256": "dffed807d65082a0ee31b97494a53f93ba41fb61e41e1ad72220c3a87bae15c3"
+      },
+      "t5": {
+        "requests": 3408,
+        "last_arrival_ms": 289999,
+        "slo_values": [
+          300
+        ],
+        "sha256": "aa62d1b4aade495d5b00eeadaa0d78791c29d3601d20aa72a24a80d325894fc4"
+      },
+      "yolo": {
+        "requests": 5454,
+        "last_arrival_ms": 290000,
+        "slo_values": [
+          300
+        ],
+        "sha256": "f0041ad0311075a46bc0c07d944a8ce900fe4d1f4bfde1bb6c30a87128417f7c"
+      }
+    },
+    "zipf_gamma": {
+      "bert": {
+        "requests": 6531,
+        "last_arrival_ms": 289120,
+        "slo_values": [
+          300
+        ],
+        "sha256": "602519d600e8e918123fa4e0f719d12e3ec8292af96f6666ff401c0620a83741"
+      },
+      "densenet": {
+        "requests": 4448,
+        "last_arrival_ms": 289037,
+        "slo_values": [
+          300
+        ],
+        "sha256": "fdb0cfe5d8410b07b7a66db99ddf1aac67ac6a6142ab01f06b0f19b07ed19560"
+      },
+      "efficientnet": {
+        "requests": 13290,
+        "last_arrival_ms": 289044,
+        "slo_values": [
+          300
+        ],
+        "sha256": "ea4cd9811b050e686cf963985832685a6ab733e001c7fcdb0ab5b77f611d3d07"
+      },
+      "gpt2": {
+        "requests": 2925,
+        "last_arrival_ms": 289058,
+        "slo_values": [
+          300
+        ],
+        "sha256": "69e149cf3bacb1a230219637ca4fe0737988db185f59166cd0dc26ffe4e8fd3e"
+      },
+      "mobilenet": {
+        "requests": 26296,
+        "last_arrival_ms": 289104,
+        "slo_values": [
+          300
+        ],
+        "sha256": "79ec9b81aa7afacb94bcd2dfdf610efeab8f931e3a0e0a28eaa116b9b18c8ec0"
+      },
+      "resnest": {
+        "requests": 9062,
+        "last_arrival_ms": 289136,
+        "slo_values": [
+          300
+        ],
+        "sha256": "7ad8863a6f5d06bc8587315eed6ffe5bd300f3eecb964f11791159f82efc1961"
+      },
+      "resnet": {
+        "requests": 3953,
+        "last_arrival_ms": 289026,
+        "slo_values": [
+          300
+        ],
+        "sha256": "2fc9c24617c04dd8cd806d841bff7aa02cd206c822d2abe27ab224e9ab5e8f85"
+      },
+      "t5": {
+        "requests": 3412,
+        "last_arrival_ms": 289037,
+        "slo_values": [
+          300
+        ],
+        "sha256": "58274804179dcf56fa56fa70787b229eae38515562d880e14861a530bbead223"
+      },
+      "yolo": {
+        "requests": 5363,
+        "last_arrival_ms": 289062,
+        "slo_values": [
+          300
+        ],
+        "sha256": "5f91141f49c409f27e36d3376bd02ac48bda73cc7f76277e2ca53d605193d6a3"
+      }
+    }
+  }
+}

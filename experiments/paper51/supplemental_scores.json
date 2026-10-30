@@ -1,0 +1,47 @@
+{
+  "schema": "paper51-supplemental-reference-v1",
+  "note": "Added policy reference scores from primary publications, not GPU checkpoint accuracy measurements. The upstream 46 entries are not overwritten.",
+  "normalization": "100 * published score / original family reference maximum",
+  "entries": {
+    "efficientnet-b2": {
+      "group": "efficientnet",
+      "raw_score": 80.1,
+      "reference_maximum": 84.3,
+      "metric": "ImageNet-1k Top-1 (%)",
+      "source": "https://github.com/google-research/sam#finetuning-efficientnet",
+      "source_detail": "AutoAugment (AA) checkpoints row; matches the five public Proteus EfficientNet raw values"
+    },
+    "efficientnet-b4": {
+      "group": "efficientnet",
+      "raw_score": 82.9,
+      "reference_maximum": 84.3,
+      "metric": "ImageNet-1k Top-1 (%)",
+      "source": "https://github.com/google-research/sam#finetuning-efficientnet",
+      "source_detail": "AutoAugment (AA) checkpoints row"
+    },
+    "efficientnet-b6": {
+      "group": "efficientnet",
+      "raw_score": 84,
+      "reference_maximum": 84.3,
+      "metric": "ImageNet-1k Top-1 (%)",
+      "source": "https://github.com/google-research/sam#finetuning-efficientnet",
+      "source_detail": "AutoAugment (AA) checkpoints row"
+    },
+    "t5-3b": {
+      "group": "t5",
+      "raw_score": 31.8,
+      "reference_maximum": 32.1,
+      "metric": "WMT EnDe BLEU",
+      "source": "https://jmlr.org/papers/volume21/20-074/20-074.pdf",
+      "source_detail": "Table 14, page 39; Small/Base/Large match the three Proteus raw reference values"
+    },
+    "t5-11b": {
+      "group": "t5",
+      "raw_score": 32.1,
+      "reference_maximum": 32.1,
+      "metric": "WMT EnDe BLEU",
+      "source": "https://jmlr.org/papers/volume21/20-074/20-074.pdf",
+      "source_detail": "Table 14, page 39"
+    }
+  }
+}
