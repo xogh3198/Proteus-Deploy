@@ -1,0 +1,30 @@
+{
+  "twitter": {
+    "url": "https://raw.githubusercontent.com/UMass-LIDS/Proteus/6967c9327e66f6d6fe94993dcaa7521efc2f72f5/traces/twitter/asplos/zipf_exponential/300/resnet.txt",
+    "sha256": "0ca98ee0c331daf005f165386942b85b574ea16b316d2b45ec57cdb1d6293755",
+    "requests": 3776,
+    "last_arrival_ms": 290308,
+    "source_slo_ms": 300
+  },
+  "uniform": {
+    "url": "https://raw.githubusercontent.com/UMass-LIDS/Proteus/6967c9327e66f6d6fe94993dcaa7521efc2f72f5/traces/twitter/asplos/zipf_uniform/300/resnet.txt",
+    "sha256": "dffed807d65082a0ee31b97494a53f93ba41fb61e41e1ad72220c3a87bae15c3",
+    "requests": 3590,
+    "last_arrival_ms": 289999,
+    "source_slo_ms": 300
+  },
+  "gamma": {
+    "url": "https://raw.githubusercontent.com/UMass-LIDS/Proteus/6967c9327e66f6d6fe94993dcaa7521efc2f72f5/traces/twitter/asplos/zipf_gamma/300/resnet.txt",
+    "sha256": "2fc9c24617c04dd8cd806d841bff7aa02cd206c822d2abe27ab224e9ab5e8f85",
+    "requests": 3953,
+    "last_arrival_ms": 289026,
+    "source_slo_ms": 300
+  },
+  "bursty": {
+    "url": "https://raw.githubusercontent.com/UMass-LIDS/Proteus/6967c9327e66f6d6fe94993dcaa7521efc2f72f5/traces/twitter/asplos/zipf_exponential_bursty/300/resnet.txt",
+    "sha256": "21129ab63e27ee647dff89e6243dda9f258680e7aea1753a3e8b00c58d56c968",
+    "requests": 8309,
+    "last_arrival_ms": 290444,
+    "source_slo_ms": 300
+  }
+}

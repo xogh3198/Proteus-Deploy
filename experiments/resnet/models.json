@@ -1,0 +1,75 @@
+{
+  "schema": "paired-resnet-v1",
+  "model_group": "resnet",
+  "dtype": "fp32",
+  "paper_precision": "not specified; do not claim confirmed paper precision",
+  "checkpoint_origin": "public ONNX Model Zoo reconstruction; exact paper files not identified",
+  "model_zoo_commit": "c5cae0f1942c8d7727372c7b1f6b485aa39e4421",
+  "models": {
+    "resnet18_v1": {
+      "file": "resnet18-v1-7.onnx",
+      "enabled": true,
+      "model_id": "onnx/models/resnet18-v1-7",
+      "revision": "c5cae0f1942c8d7727372c7b1f6b485aa39e4421",
+      "accuracy": 70.93,
+      "accuracy_source": "Proteus aggregate_profiled.csv; reference score, not current checkpoint accuracy",
+      "accuracy_dataset": "imagenet-1k/top1/proteus-reference",
+      "checkpoint_published_top1": 69.93,
+      "sha256": "4e8f8653e7a2222b3904cc3fe8e304cd8b339ce1d05fd24688162f86fb6df52c",
+      "bytes": 46820737,
+      "url": "https://media.githubusercontent.com/media/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/classification/resnet/model/resnet18-v1-7.onnx"
+    },
+    "resnet34_v1": {
+      "file": "resnet34-v1-7.onnx",
+      "enabled": true,
+      "model_id": "onnx/models/resnet34-v1-7",
+      "revision": "c5cae0f1942c8d7727372c7b1f6b485aa39e4421",
+      "accuracy": 74.37,
+      "accuracy_source": "Proteus aggregate_profiled.csv; reference score, not current checkpoint accuracy",
+      "accuracy_dataset": "imagenet-1k/top1/proteus-reference",
+      "checkpoint_published_top1": 73.73,
+      "sha256": "883a41b2e30ddc2e422c108b091b5e70b92d37dc5c345a2c563dcae27971e2cc",
+      "bytes": 87302588,
+      "url": "https://media.githubusercontent.com/media/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/classification/resnet/model/resnet34-v1-7.onnx"
+    },
+    "resnet50_v1": {
+      "file": "resnet50-v1-7.onnx",
+      "enabled": true,
+      "model_id": "onnx/models/resnet50-v1-7",
+      "revision": "c5cae0f1942c8d7727372c7b1f6b485aa39e4421",
+      "accuracy": 77.36,
+      "accuracy_source": "Proteus aggregate_profiled.csv; reference score, not current checkpoint accuracy",
+      "accuracy_dataset": "imagenet-1k/top1/proteus-reference",
+      "checkpoint_published_top1": 74.93,
+      "sha256": "af16a04a6ec48ac494065d4439fe9dea590d337b9ca6dc328160ccf04a217b9c",
+      "bytes": 102583340,
+      "url": "https://media.githubusercontent.com/media/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/classification/resnet/model/resnet50-v1-7.onnx"
+    },
+    "resnet101_v1": {
+      "file": "resnet101-v1-7.onnx",
+      "enabled": true,
+      "model_id": "onnx/models/resnet101-v1-7",
+      "revision": "c5cae0f1942c8d7727372c7b1f6b485aa39e4421",
+      "accuracy": 78.34,
+      "accuracy_source": "Proteus aggregate_profiled.csv; reference score, not current checkpoint accuracy",
+      "accuracy_dataset": "imagenet-1k/top1/proteus-reference",
+      "checkpoint_published_top1": 76.48,
+      "sha256": "760702f6ec0138f71ebac66f4e95d1c72dc9267a8544f4d4667a53075fd0497c",
+      "bytes": 178914043,
+      "url": "https://media.githubusercontent.com/media/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/classification/resnet/model/resnet101-v1-7.onnx"
+    },
+    "resnet152_v1": {
+      "file": "resnet152-v1-7.onnx",
+      "enabled": true,
+      "model_id": "onnx/models/resnet152-v1-7",
+      "revision": "c5cae0f1942c8d7727372c7b1f6b485aa39e4421",
+      "accuracy": 79.22,
+      "accuracy_source": "Proteus aggregate_profiled.csv; reference score, not current checkpoint accuracy",
+      "accuracy_dataset": "imagenet-1k/top1/proteus-reference",
+      "checkpoint_published_top1": 77.11,
+      "sha256": "b0ec92437bf8c9d0739bf9bafdea9638e13f9e3c1e2fb766ad546cc182fd3f6d",
+      "bytes": 241816206,
+      "url": "https://media.githubusercontent.com/media/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/classification/resnet/model/resnet152-v1-7.onnx"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+**
+!experiments/
+!experiments/resnet/
+!experiments/resnet/**
+experiments/resnet/local.env
+experiments/resnet/generated/**
+!proteus_realtime/
+!proteus_realtime/**
+!proteus_baselines/
+!proteus_baselines/**
+!core/
+!core/*.py
+!algorithms/
+!algorithms/*.py
+!run.py

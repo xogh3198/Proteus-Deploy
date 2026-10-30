@@ -1,2 +1,3 @@
 # Keep Linux deployment scripts runnable after a Windows checkout.
 deploy/docker/*.sh text eol=lf
+experiments/resnet/*.sh text eol=lf

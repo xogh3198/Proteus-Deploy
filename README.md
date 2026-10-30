@@ -1,5 +1,7 @@
 # Proteus
 
+> **v1 / v2 ResNet 실험:** ResNet-18·34·50·101·152, 단일 V100, FP32 설정과 빌드·실행 명령은 [새 실험 안내](experiments/resnet/setting_readme.md)를 사용합니다. 아래는 기존 실행 경로의 설명입니다.
+
 ## 실험 종류별 설정 및 실행
 
 모델·GPU·SLO·배치 후보 변경과 단계별 명령은 **[setting_readme.md](setting_readme.md)**를 참고하세요.
