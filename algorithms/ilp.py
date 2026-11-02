@@ -174,6 +174,11 @@ class Ilp(SchedulingAlgorithm):
             accelerators.append('VPU-' + str(acc))
             accelerators.append('GPU_PASCAL-' + str(acc))
 
+        # Deployment-only filter: leave the published MILP unchanged otherwise.
+        configured = getattr(self.simulator, 'configured_accelerators', None)
+        if configured is not None:
+            accelerators = [name for name in accelerators if name in configured]
+
         self.accelerator_dict = {'CPU': 0, 'GPU_AMPERE': 1, 'VPU': 2, 'GPU_PASCAL': 3}
 
         # A(j)

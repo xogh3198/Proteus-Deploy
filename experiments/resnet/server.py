@@ -32,7 +32,7 @@ def add_admin(server, executor, runtime, engine):
     def execute(method, payload):
         if method == "Status":
             native = executor.status() if engine == "infaas" else executor.state()
-            return {**native, **runtime.describe(), "engine": engine,
+            return {**runtime.describe(), **native, "engine": engine,
                     "policy": native.get("implementation"), "native_state": native}
         if method == "Reset":
             if engine != "infaas":
@@ -43,6 +43,8 @@ def add_admin(server, executor, runtime, engine):
                 executor.backend.unload()
                 return {"resident": False}
         if method == "Warmup":
+            if hasattr(executor, "warmup"):
+                return executor.warmup()
             if engine == "infaas":
                 import time
                 with executor.condition:
@@ -97,25 +99,12 @@ def main():
     else:
         from proteus_realtime.server import create_server
         runtime = Runtime()
-        common = dict(profile_path="/profiles/profiles.json", slo=float(os.environ["SLO_MS"]),
-                      batches=tuple(map(int, os.environ["BATCH_SIZES"].split(","))),
-                      max_queue=int(os.environ["MAX_QUEUE_SIZE"]),
-                      interval=float(os.environ["ALLOCATION_INTERVAL"]))
-        if engine == "proteus":
-            from proteus_realtime.serving import ProteusExecutor
-            class PairedProteus(ProteusExecutor):
-                def state(self):
-                    return {**super().state(), "preprocessing_loading_overlap": False}
-            executor = PairedProteus(runtime, **common,
-                guard_ms=float(os.environ["DEADLINE_GUARD_MS"]),
-                rpc_budget_ms=float(os.environ["RPC_BUDGET_MS"]), early_deadline_drop=True)
-        elif engine == "infaas-accuracy":
-            from proteus_baselines.config import verify_sources
-            from proteus_baselines.infaas_accuracy import AccuracyExecutor
-            verify_sources(baseline="infaas-accuracy")
-            executor = AccuracyExecutor(runtime, **common)
-        else:
+        if engine not in {"proteus", "infaas-accuracy"}:
             raise ValueError("This checkout does not support the selected serving engine")
+        from experiments.reproduce.proteus_executor import Executor
+        executor = Executor(runtime, engine, slo=float(os.environ["SLO_MS"]),
+            batches=tuple(map(int, os.environ["BATCH_SIZES"].split(","))),
+            interval=float(os.environ["ALLOCATION_INTERVAL"]))
         server, _ = create_server(executor, "0.0.0.0:9000", int(os.environ["RPC_THREADS"]))
     add_admin(server, executor, runtime, engine)
     server.start()

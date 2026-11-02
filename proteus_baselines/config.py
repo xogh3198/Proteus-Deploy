@@ -12,7 +12,8 @@ from proteus_realtime.registry import load_registry
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_SOURCES = {
-    "core/predictor.py": "09611cca762783c52f1db2929db4c0096207d91a7e812fe8f797744202c57c48",
+    # v1 platform adaptation: scheduled event timestamp for stale-timer identity.
+    "core/predictor.py": "b7059f2afdb116909fe3fcf3aec27fed196919cbf6cc39835213cc28d6b9f6cf",
     "core/executor.py": "f1622f1960c14b7e97ea685a55513107314e3d86793ff4b94d3b63853d6f9131",
     "core/common.py": "095fa65ee2863c11b1bc67728af05529bf9843f7159c55484cae37818f7c6192",
     "core/exceptions.py": "c17125b08ea6890a000b7315b378de2a46b449b4439738a7d096f27cf18a8790",
@@ -23,7 +24,8 @@ EXPECTED_SOURCES = {
 }
 SOMMELIER_SOURCES = {
     "run.py": "d7daee55c9eab63456b4cbce4d2641088cee90464581417ea6b11dc0dbcaeaa7",
-    "algorithms/ilp.py": "0f448fe0a9b703b8d9a1e0e963669a5d016428d5fcca09c4eb49c505fb3cef33",
+    # v1 platform adaptation: configured physical-device inventory filter only.
+    "algorithms/ilp.py": "d95ae8f16397c8bece6e17ee559ba3d89222e719c0b33e6f22112c0ba0f66025",
     # Shared port: opt-in idle-aware profiles/RPC reserve. Sommelier's reserve
     # stays zero unless explicitly passed; original core/ILP remain unchanged.
     "proteus_realtime/policy.py": "8b611439391845bb8059e70e636f7b9cad08d452c352ff8f173e38bccd599fcb",

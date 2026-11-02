@@ -7,10 +7,12 @@ COPY experiments/resnet/requirements.txt /opt/requirements.txt
 RUN python -m pip install --no-cache-dir -r /opt/requirements.txt
 WORKDIR /app
 COPY experiments/resnet /app/experiments/resnet
+COPY experiments/reproduce /app/experiments/reproduce
 COPY proteus_realtime /app/proteus_realtime
 COPY proteus_baselines /app/proteus_baselines
-COPY core/common.py core/exceptions.py core/executor.py core/predictor.py /app/core/
-COPY algorithms/clipper.py algorithms/ilp.py /app/algorithms/
+COPY core /app/core
+COPY algorithms /app/algorithms
+COPY traces/model_variants/resnet /app/traces/model_variants/resnet
 COPY run.py /app/run.py
 ENV PYTHONPATH=/app PYTHONUNBUFFERED=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 WORKDIR /tmp

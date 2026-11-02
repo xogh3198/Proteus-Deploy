@@ -17,6 +17,7 @@ import urllib.request
 import uuid
 
 from .assets import manifest
+from experiments.reproduce.metrics import add_boundaries, boundary_report
 
 
 def http(url, payload=None, timeout=10):
@@ -102,12 +103,13 @@ class Client:
                 response = self.rpc(request, timeout=self.timeout)
                 row.update(ok=not response.rejected, model=response.variant, server_ms=response.latency,
                     timings=dict(response.timings), reject_kind=response.reject_kind, error=response.reason)
+                row["timings"]["measurement.native_api_latency"] = response.latency
                 row["batch_size"] = int(row["timings"].get("worker.batch_size", 0))
         except Exception as error:
             row.update(reject_kind=type(error).__name__, error=str(error))
         row["e2e_ms"] = (time.perf_counter()-started)*1000
         row["slo_met"] = bool(row["ok"] and row["e2e_ms"] <= slo)
-        return row
+        return add_boundaries(row)
 
 
 def percentile(values, percent):
@@ -190,9 +192,11 @@ def summary(rows, duration, slo=200):
         batches[key] = batches.get(key, 0)+1
     lags = [r["send_lag_ms"] for r in sent]
     unknown = sorted(set(counts)-set(scores))
+    family_best = max(entry["accuracy"] for entry in scores.values())
     server_values = [r["server_ms"] for r in successful if r.get("server_ms") is not None]
     server_good = sum(v <= slo for v in server_values)
-    return {"scheduled_requests": len(rows), "sent_requests": len(sent), "client_not_sent": len(rows)-len(sent),
+    return {"measurement_boundaries": boundary_report(rows),
+            "scheduled_requests": len(rows), "sent_requests": len(sent), "client_not_sent": len(rows)-len(sent),
             "successful_replies": len(successful), "slo_met_sent_requests": len(good),
             "successful_late_replies": len(successful)-len(good),
             "failed_or_rejected_sent_requests": len(sent)-len(successful),
@@ -204,6 +208,11 @@ def summary(rows, duration, slo=200):
                 fmean(scores[r["model"]]["accuracy"] for r in successful) if successful and not unknown else None,
             "mean_reference_accuracy_of_slo_met_replies":
                 fmean(scores[r["model"]]["accuracy"] for r in good) if good and not unknown else None,
+            "normalized_reference_effective_accuracy_of_successful_replies":
+                100*fmean(scores[r["model"]]["accuracy"] for r in successful)/family_best if successful and not unknown else None,
+            "normalized_reference_effective_accuracy_of_slo_met_replies":
+                100*fmean(scores[r["model"]]["accuracy"] for r in good)/family_best if good and not unknown else None,
+            "accuracy_normalization": "all five ResNet candidates, best supplied score=79.22; never normalize a fixed model against itself",
             "mean_e2e_ms": fmean(values) if values else None,
             "p50_e2e_ms": percentile(values, 50), "p95_e2e_ms": percentile(values, 95),
             "p99_e2e_ms": percentile(values, 99), "latency_population": "successful replies, including late replies",
@@ -211,12 +220,11 @@ def summary(rows, duration, slo=200):
             "max_client_send_lag_ms": max(lags) if lags else None,
             "requests_above_20ms_send_lag": sum(v > 20 for v in lags),
             "trace_timing_valid": len(sent) == len(rows) and all(v <= 20 for v in lags),
-            "server_internal": {"successful_latency_samples": len(server_values),
-                "slo_met_successful_replies": server_good,
-                "slo_unmet_ratio_of_sent_including_failures": 1-server_good/len(sent) if sent else None,
+            "worker_reported_interval": {"successful_latency_samples": len(server_values),
+                "successful_samples_below_configured_threshold": server_good,
                 "mean_ms": fmean(server_values) if server_values else None,
                 "p50_ms": percentile(server_values, 50), "p95_ms": percentile(server_values, 95),
-                "boundary_note": "Native server boundaries differ: Clipper includes ingress/native frontend; use client E2E for cross-system comparison."},
+                "boundary_note": "Source-specific successful intervals, not a full-system SLO ratio. See measurement_boundaries; failures have no observed interval."},
             "accuracy_note": "Supplied Proteus model reference scores; not measured checkpoint/image correctness",
             "unknown_variants": unknown}
 

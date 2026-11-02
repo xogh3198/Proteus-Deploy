@@ -84,9 +84,10 @@ def test_late_success_rejection_and_unsent_are_distinct_slo_failures():
     assert report["slo_unmet_ratio_of_sent_requests"] == pytest.approx(2/3)
     assert report["slo_unmet_ratio_of_all_scheduled_requests"] == .75
     assert report["mean_e2e_ms"] == 175
+    assert report["normalized_reference_effective_accuracy_of_successful_replies"] == pytest.approx(100*70.93/79.22)
     assert report["slo_met_qps"] == .5
-    assert report["server_internal"]["slo_met_successful_replies"] == 2
-    assert report["server_internal"]["slo_unmet_ratio_of_sent_including_failures"] == pytest.approx(1/3)
+    assert report["worker_reported_interval"]["successful_samples_below_configured_threshold"] == 2
+    assert report["worker_reported_interval"]["successful_latency_samples"] == 2
 
 
 def test_source_models_are_exactly_the_five_resnet_v1_variants():

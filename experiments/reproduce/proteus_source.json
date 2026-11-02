@@ -1,0 +1,54 @@
+{
+  "repository": "https://github.com/UMass-LIDS/Proteus.git",
+  "commit": "6967c9327e66f6d6fe94993dcaa7521efc2f72f5",
+  "files": {
+    "algorithms/base.py": {
+      "upstream_sha256": "5b165d4569415e4c0a5452fac33c0f822e18e4c4830443bba640ae100b726cb8",
+      "runtime_sha256": "5b165d4569415e4c0a5452fac33c0f822e18e4c4830443bba640ae100b726cb8"
+    },
+    "algorithms/clipper.py": {
+      "upstream_sha256": "d1397a04e699648be5bc47e5b9061e30783a3498b8a8158e10c45fb5b7e9c013",
+      "runtime_sha256": "d1397a04e699648be5bc47e5b9061e30783a3498b8a8158e10c45fb5b7e9c013"
+    },
+    "algorithms/ilp.py": {
+      "upstream_sha256": "0f448fe0a9b703b8d9a1e0e963669a5d016428d5fcca09c4eb49c505fb3cef33",
+      "runtime_sha256": "d95ae8f16397c8bece6e17ee559ba3d89222e719c0b33e6f22112c0ba0f66025"
+    },
+    "core/common.py": {
+      "upstream_sha256": "095fa65ee2863c11b1bc67728af05529bf9843f7159c55484cae37818f7c6192",
+      "runtime_sha256": "095fa65ee2863c11b1bc67728af05529bf9843f7159c55484cae37818f7c6192"
+    },
+    "core/exceptions.py": {
+      "upstream_sha256": "c17125b08ea6890a000b7315b378de2a46b449b4439738a7d096f27cf18a8790",
+      "runtime_sha256": "c17125b08ea6890a000b7315b378de2a46b449b4439738a7d096f27cf18a8790"
+    },
+    "core/executor.py": {
+      "upstream_sha256": "f1622f1960c14b7e97ea685a55513107314e3d86793ff4b94d3b63853d6f9131",
+      "runtime_sha256": "f1622f1960c14b7e97ea685a55513107314e3d86793ff4b94d3b63853d6f9131"
+    },
+    "core/predictor.py": {
+      "upstream_sha256": "09611cca762783c52f1db2929db4c0096207d91a7e812fe8f797744202c57c48",
+      "runtime_sha256": "b7059f2afdb116909fe3fcf3aec27fed196919cbf6cc39835213cc28d6b9f6cf"
+    },
+    "core/scheduling_env.py": {
+      "upstream_sha256": "cf59deba28ce070a960a79a8123d75d0c5b68f46b38ea44d693444150a28c43e",
+      "runtime_sha256": "cf59deba28ce070a960a79a8123d75d0c5b68f46b38ea44d693444150a28c43e"
+    },
+    "core/simulator.py": {
+      "upstream_sha256": "5ad566d60042bdc999c8a73d8f7fefc64b9dca5d4953122daa6f7c24833af611",
+      "runtime_sha256": "5ad566d60042bdc999c8a73d8f7fefc64b9dca5d4953122daa6f7c24833af611"
+    },
+    "core/utils.py": {
+      "upstream_sha256": "f70352f52e59a15504301581ed5bade2a386ccbe3f8211a85e70ae725bc8d9a1",
+      "runtime_sha256": "f70352f52e59a15504301581ed5bade2a386ccbe3f8211a85e70ae725bc8d9a1"
+    },
+    "run.py": {
+      "upstream_sha256": "d7daee55c9eab63456b4cbce4d2641088cee90464581417ea6b11dc0dbcaeaa7",
+      "runtime_sha256": "d7daee55c9eab63456b4cbce4d2641088cee90464581417ea6b11dc0dbcaeaa7"
+    }
+  },
+  "allowed_adaptations": {
+    "algorithms/ilp.py": "physical device inventory filter only; constraints/objective/solver parameters retained",
+    "core/predictor.py": "compare scheduled event time for stale timer detection; virtual-clock behavior unchanged"
+  }
+}

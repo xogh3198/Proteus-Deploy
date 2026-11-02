@@ -553,7 +553,7 @@ class Predictor:
 
         self.log.debug(f'SLO expiring callback, Current clock: {clock}, event counter: '
             f'{event.event_counter}, slo_expiring_dict entry: {self.slo_expiring_dict[event.event_counter]}')
-        if clock != self.slo_expiring_dict[event.event_counter]:
+        if event.start_time != self.slo_expiring_dict[event.event_counter]:
             # this means we have encountered an older SLO_EXPIRING callback
             # we do not need to handle it
             self.log.debug(f'slo_expiring_callback: Encountered an older SLO_EXPIRING '

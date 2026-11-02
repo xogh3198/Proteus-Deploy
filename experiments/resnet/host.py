@@ -57,7 +57,7 @@ def settings(engine, root=ROOT):
         raise ValueError("Phase manifest is inconsistent")
     for key in ("GPU", "CPU_THREADS", "CPU_INTEROP_THREADS", "PREPROCESS_WORKERS", "RPC_THREADS",
                 "WORKER_THREADS", "MAX_QUEUE_SIZE", "PROFILE_TRIALS", "QUERY_THREADS", "TRACE_CONCURRENCY"):
-        low = 0 if key == "GPU" else 1
+        low = 0 if key in {"GPU", "MAX_QUEUE_SIZE"} else 1
         if not values[key].isdigit() or not low <= int(values[key]) <= 4096:
             raise ValueError("Invalid integer setting: "+key)
     if int(values["PREPROCESS_WORKERS"]) > 32 or int(values["TRACE_CONCURRENCY"]) > 1024:
@@ -80,9 +80,9 @@ def settings(engine, root=ROOT):
         values[key] = str((p if p.is_absolute() else root/p).resolve())
     phase = phase["phase"]
     values.update(ROOT=str(root), ENGINE=engine, EXPERIMENT_PHASE=phase,
-                  WORKER_IMAGE=f"paired-{engine}-resnet:{phase}",
-                  PROJECT=f"paired-resnet-{engine}-{phase}")
-    values["RUN_DIR"] = str(Path(values["DATA_DIR"])/engine/phase)
+                  WORKER_IMAGE=f"source-{engine}-resnet:{phase}",
+                  PROJECT=f"source-{engine}-{phase}")
+    values["RUN_DIR"] = str(Path(values["DATA_DIR"])/engine/("source-"+phase))
     values["MODEL_NAME"] = "resnet18_v1" if engine == "clipper" and values["CLIPPER_MODE"] == "ht" else (
         "resnet152_v1" if engine == "clipper" else "resnet50_v1")
     return values
@@ -114,7 +114,7 @@ def docker_user(info):
 
 
 def source_fingerprint(c):
-    paths = [HERE]
+    paths = [HERE, ROOT/"experiments/reproduce"]
     if c["ENGINE"] in {"proteus", "infaas-accuracy"}:
         paths += [ROOT/"proteus_realtime", ROOT/"proteus_baselines", ROOT/"core", ROOT/"algorithms"]
     elif c["ENGINE"] == "infaas":
@@ -331,7 +331,7 @@ def up(c):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("engine", choices=["proteus", "infaas-accuracy", "infaas", "clipper"])
-    parser.add_argument("action", choices=["settings", "compose", "build", "setup", "up", "down", "state", "register", "query", "trace", "reset"])
+    parser.add_argument("action", choices=["settings", "compose", "build", "setup", "up", "down", "state", "register", "query", "trace", "reset", "logs"])
     args, extra = parser.parse_known_args(argv)
     c = settings(args.engine)
     if args.action == "settings":
@@ -348,6 +348,9 @@ def main(argv=None):
         else:
             print("No compose file for this experiment; no service was stopped.")
         return
+    if args.action == "logs":
+        docker_info(c)
+        return compose(c, "logs", "--tail", "100", *extra)
     return client(c, args.action, extra, network=not (args.action == "trace" and "--dry-run" in extra))
 
 
