@@ -20,6 +20,22 @@ from .assets import manifest
 from experiments.reproduce.metrics import add_boundaries, boundary_report
 
 
+def print_report(value):
+    """Use short console names without changing policy IDs or saved results."""
+    names = {name: name.removesuffix("_v1") for name in manifest()["models"]}
+
+    def display(item):
+        if isinstance(item, dict):
+            return {names.get(key, key): display(value) for key, value in item.items()}
+        if isinstance(item, list):
+            return [display(value) for value in item]
+        if isinstance(item, str):
+            return names.get(item, item)
+        return item
+
+    print(json.dumps(display(value), indent=2))
+
+
 def http(url, payload=None, timeout=10):
     data = None if payload is None else json.dumps(payload).encode()
     request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
@@ -290,7 +306,7 @@ def main(argv=None):
                 "DEADLINE_GUARD_MS", "RPC_BUDGET_MS", "HW_COST", "LAMBDA", "SLACK_THRESHOLD", "MIN_ACCURACY", "QUERY_THREADS"]},
             "slo_definition": "client RPC call start to response; scheduled send lag reported separately"}
         if args.dry_run:
-            print(json.dumps(config, indent=2)); return
+            print_report(config); return
     client = Client(os.environ["ENGINE"], args.timeout)
     if args.action in {"state", "health"}:
         state = client.admin("Status", timeout=10)
@@ -301,17 +317,17 @@ def main(argv=None):
         native = state.get("native_state", state)
         keys = ["policy_ready", "policy_error", "plan", "plan_details", "selected_model", "resident_model", "batch_size_counts",
                 "successful_requests_by_model", "processed", "failed", "deadline_drops"]
-        print(json.dumps({**{k: native.get(k) for k in keys}, **{k: state.get(k) for k in
+        print_report({**{k: native.get(k) for k in keys}, **{k: state.get(k) for k in
             ["engine", "experiment_phase", "dtype", "model_name", "fixed_model", "enabled_models", "resident", "actual_load_count",
-             "model_switches_after_initial_load", "cpu_stage"]}}, indent=2)); return
+             "model_switches_after_initial_load", "cpu_stage"]}}); return
     if args.action == "register":
-        print(json.dumps(client.admin("Profile"), indent=2)); return
+        print_report(client.admin("Profile")); return
     if args.action == "reset":
-        print(json.dumps(client.admin("Reset"))); return
+        print_report(client.admin("Reset")); return
     if args.action == "query":
         value = client.query(raw, slo, uuid.uuid4().hex)
         value.pop("rpc_started", None)
-        print(json.dumps(value, indent=2)); return
+        print_report(value); return
     initial = client.admin("Status")
     if not initial.get("native_state", initial).get("policy_ready", os.environ["ENGINE"] == "clipper"):
         raise ValueError("Run register before trace")
@@ -346,7 +362,7 @@ def main(argv=None):
         writer.writeheader()
         for row in rows:
             writer.writerow({**row, "timings": json.dumps(row["timings"])})
-    print(json.dumps(result, indent=2))
+    print_report(result)
     print("Results:", output.with_suffix(".json"), output.with_suffix(".csv"))
 
 
