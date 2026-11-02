@@ -155,7 +155,7 @@ def read_trace(path, limit=0):
     return rows[:limit] if limit else rows
 
 
-def replay(client, raw, arrivals, slo, speed, concurrency):
+def replay(client, raw, arrivals, slo, speed, concurrency, *, use_trace_slo=False):
     """No closed-loop feedback or hidden client backlog changes the arrivals."""
     if not math.isfinite(speed) or speed <= 0 or not 1 <= concurrency <= 1024:
         raise ValueError("Invalid replay speed or concurrency")
@@ -167,10 +167,12 @@ def replay(client, raw, arrivals, slo, speed, concurrency):
 
     def send(index, target, qos, source_slo):
         try:
-            row = client.query(raw, slo, uuid.uuid4().hex)
+            request_slo = source_slo if use_trace_slo else slo
+            row = client.query(raw, request_slo, uuid.uuid4().hex)
             row.update(index=index, arrival_ms=arrivals[index][0], qos=qos, source_slo_ms=source_slo,
+                       request_slo_ms=request_slo,
                        send_lag_ms=max(0, (row.pop("rpc_started")-target)*1000))
-            row["scheduled_slo_met"] = row["slo_met"] and row["e2e_ms"]+row["send_lag_ms"] <= slo
+            row["scheduled_slo_met"] = row["slo_met"] and row["e2e_ms"]+row["send_lag_ms"] <= request_slo
             rows[index] = row
         finally:
             slots.release()
@@ -185,6 +187,7 @@ def replay(client, raw, arrivals, slo, speed, concurrency):
                 futures.append(pool.submit(send, index, target, qos, source_slo))
             else:
                 rows[index] = {"index": index, "arrival_ms": arrival, "qos": qos, "source_slo_ms": source_slo,
+                               "request_slo_ms": source_slo if use_trace_slo else slo,
                                "sent": False, "ok": False, "slo_met": False, "scheduled_slo_met": False,
                                "reject_kind": "client_not_sent", "error": "Client in-flight limit", "timings": {}}
             if time.perf_counter() >= next_report:
@@ -193,6 +196,21 @@ def replay(client, raw, arrivals, slo, speed, concurrency):
         for future in futures:
             future.result()
     return rows, time.perf_counter()-origin
+
+
+def validate_published_trace(path, arrivals, workload, slo, speed):
+    """Validate the public file and deadline before opening an inference client."""
+    if workload not in {"twitter", "bursty"}:
+        raise ValueError("Unknown published workload")
+    entry = json.loads((Path(__file__).with_name("traces.json")).read_text())[workload]
+    if hashlib.sha256(Path(path).read_bytes()).hexdigest() != entry["sha256"]:
+        raise ValueError("Published trace checksum differs; run setup with the selected --workload")
+    if (len(arrivals) != entry["requests"] or arrivals[-1][0] != entry["last_arrival_ms"]
+            or any(r[2] != entry["source_slo_ms"] for r in arrivals)):
+        raise ValueError("Published trace request count/timing/SLO differs")
+    if speed != 1 or slo != entry["source_slo_ms"]:
+        raise ValueError("Published workload requires speed=1 and the original trace SLO; use the same --workload for up and trace")
+    return entry
 
 
 def summary(rows, duration, slo=200):
@@ -286,14 +304,25 @@ def main(argv=None):
         return native_register()
     raw = Path("/inputs/image.jpg").read_bytes()
     slo = float(os.environ["SLO_MS"])
+    published_workload = os.environ.get("PUBLISHED_WORKLOAD", "")
     if args.action == "trace":
         path = Path("/data/trace.txt")
-        arrivals = read_trace(path, args.limit)
+        arrivals = read_trace(path)
+        if published_workload:
+            source_trace = validate_published_trace(path, arrivals, published_workload, slo, args.speed)
+        if args.limit < 0:
+            parser.error("limit must be nonnegative")
+        total_requests = len(arrivals)
+        arrivals = arrivals[:args.limit] if args.limit else arrivals
         duration = arrivals[-1][0]/1000/args.speed
         config = {"engine": os.environ["ENGINE"], "phase": os.environ["EXPERIMENT_PHASE"],
             "dtype": "fp32", "trace_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-            "selected_requests": len(arrivals), "speed": args.speed, "planned_duration_seconds": duration,
-            "slo_override_ms": slo, "source_slo_values": sorted({r[2] for r in arrivals}),
+            "trace_total_requests": total_requests, "selected_requests": len(arrivals),
+            "workload": os.environ.get("WORKLOAD"), "published_workload": published_workload or None,
+            "speed": args.speed, "planned_duration_seconds": duration,
+            "slo_override_ms": None if published_workload else slo,
+            "slo_source": "trace column 3" if published_workload else "SLO_MS setting",
+            "configured_worker_slo_ms": slo, "source_slo_values": sorted({r[2] for r in arrivals}),
             "concurrency": args.concurrency, "timeout_seconds": args.timeout,
             "input_sha256": hashlib.sha256(raw).hexdigest(), "source_image_repeated": True,
             "start_state": os.environ["START_STATE"], "image_id": os.environ.get("EXPERIMENT_IMAGE_ID"),
@@ -305,6 +334,9 @@ def main(argv=None):
                 "WARMUP_QUERIES", "PROFILE_TRIALS", "ALLOCATION_INTERVAL", "EWMA_ALPHA", "INITIAL_RATE",
                 "DEADLINE_GUARD_MS", "RPC_BUDGET_MS", "HW_COST", "LAMBDA", "SLACK_THRESHOLD", "MIN_ACCURACY", "QUERY_THREADS"]},
             "slo_definition": "client RPC call start to response; scheduled send lag reported separately"}
+        if published_workload:
+            config["source_trace_url"] = source_trace["url"]
+            config["reproduction_scope"] = "Published ResNet arrival times and SLO; single-V100 execution, not the full paper cluster"
         if args.dry_run:
             print_report(config); return
     client = Client(os.environ["ENGINE"], args.timeout)
@@ -341,7 +373,8 @@ def main(argv=None):
     native = before.get("native_state", before)
     if not native.get("policy_ready", os.environ["ENGINE"] == "clipper"):
         raise ValueError("Run register before trace")
-    rows, elapsed = replay(client, raw, arrivals, slo, args.speed, args.concurrency)
+    rows, elapsed = replay(client, raw, arrivals, slo, args.speed, args.concurrency,
+                           use_trace_slo=bool(published_workload))
     after = client.admin("Status")
     result = summary(rows, duration, slo)
     result["elapsed_seconds_including_drain"] = elapsed
@@ -355,7 +388,7 @@ def main(argv=None):
     output = Path("/results") / ("trace-"+token)
     document = {"config": config, "summary": result, "worker_before": before, "worker_after": after}
     output.with_suffix(".json").write_text(json.dumps(document, indent=2, allow_nan=False))
-    fields = ["index", "arrival_ms", "qos", "source_slo_ms", "sent", "ok", "slo_met", "scheduled_slo_met",
+    fields = ["index", "arrival_ms", "qos", "source_slo_ms", "request_slo_ms", "sent", "ok", "slo_met", "scheduled_slo_met",
               "e2e_ms", "server_ms", "send_lag_ms", "model", "batch_size", "reject_kind", "error", "timings"]
     with output.with_suffix(".csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fields)

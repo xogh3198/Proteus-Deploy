@@ -2,6 +2,8 @@
 
 > **현재 v1 실행 안내:** [소스 보존·계측 설정](experiments/resnet/setting_readme.md)을 사용합니다. v1은 제공된 정책 코드 사용 경로로 갱신됐고, v2는 이전 GPU 포트입니다. 아래는 기존 배포 경로의 설명입니다.
 
+공개 ResNet의 원본 Twitter·급증 부하와 SLO 300ms를 재생하려면 `source-docker.sh proteus`의 각 명령에 `--workload twitter` 또는 `--workload bursty`를 붙입니다. [준비·전체 측정 순서](experiments/resnet/setting_readme.md)에 두 조건의 명령과 별도 저장 경로가 있습니다. 추가 배속 없이 원본 도착 시각을 사용합니다.
+
 이 문서는 **실제 GPU 추론**용입니다. 저장소 루트에서 실행합니다.
 
 CPU 전처리 → 텐서 큐 → GPU 실행으로 갱신한 버전의 재빌드·재프로파일링은

@@ -33,6 +33,79 @@ CSV 입력은 원래 로더의 50th_pct 매핑을 유지한다. 실제 반복 �
 정확한 원 논문 checkpoint는 식별되지 않았으며 models.json의 checkpoint 출처·점수 차이를 기록한다.
 v1은 Proteus의 추상 입력에 대응하는 미리 준비한 텐서를 사용한다. 실제 추론·H2D·결과 회수는 요청마다 실행한다.
 
+## 공개 Twitter·급증 부하와 SLO 그대로 재생
+
+Proteus 실행 명령에 `--workload twitter` 또는 `--workload bursty`를 붙인다.
+이 옵션은 개인 local.env의 SLO_MS=200·TRACE_SPEED=2보다 우선하여 공개 ResNet 파일의 SLO 300ms·추가 배속 1을 적용한다.
+요청마다 파일의 세 번째 열을 실제 RPC의 SLO로 사용하며, 도착 시각·QoS·요청 수를 변경하지 않는다.
+트레이스는 아래 고정 커밋의 원본 파일이고, 재생 직전 SHA256·전체 건수·마지막 도착 시각·SLO를 검사한다.
+원본 파일은 이미 가공된 실험 입력이다. 1배속은 이 파일에 추가 시간축 압축을 하지 않는다는 뜻이다.
+
+| 옵션 | 공개 파일 (traces/twitter/asplos 아래) | 요청 수 | 마지막 도착 시각 | 평균 QPS | SLO |
+|---|---|---:|---:|---:|---:|
+| twitter | zipf_exponential/300/resnet.txt | 3,776 | 290.308초 | 13.01 | 300ms |
+| bursty | zipf_exponential_bursty/300/resnet.txt | 8,309 | 290.444초 | 28.61 | 300ms |
+
+출처: https://github.com/UMass-LIDS/Proteus/tree/6967c9327e66f6d6fe94993dcaa7521efc2f72f5/traces/twitter/asplos
+프리셋에서 `--speed 2`처럼 추가 배속을 지정하면 요청을 전송하기 전에 거부한다.
+GPU·가중치·배치 후보·CPU·제어 설정·START_STATE는 기존 설정을 유지한다. 이번 변경으로 core/algorithms나 정책·로딩 순서를 수정하지 않는다.
+재현 범위는 공개 ResNet 워크로드와 SLO다. 논문의 전체 다중 모델 그룹·이기종 클러스터나 비공개 서빙 구현과 동일하다고 표기하지 않는다.
+논문 §6.1.3의 압축 배율 전체를 새로 추정하거나, 임의의 요청을 추가하지 않는다.
+
+아래 명령은 기존 Proteus 폴더에서 실행한다. 사용 중인 일반 실행은 먼저 `proteus down`으로 종료한다.
+
+```bash
+cd /home/xsailor4/taeho/serving-repos/Proteus
+systemctl --user start docker.service
+unset DOCKER_CONTEXT
+export DOCKER_HOST="unix:///run/user/$(id -u)/docker.sock"
+docker info --format '{{.DockerRootDir}}'
+
+# Twitter: 처음 한 번 빌드·입력 준비·프로파일링
+bash deploy/docker/source-docker.sh proteus settings --workload twitter
+bash deploy/docker/source-docker.sh proteus build --workload twitter &&
+bash deploy/docker/source-docker.sh proteus setup --workload twitter &&
+bash deploy/docker/source-docker.sh proteus up --workload twitter &&
+bash deploy/docker/source-docker.sh proteus register --workload twitter
+
+# 프로파일링 상태를 비운 새 프로세스에서 전체 요청 재생
+bash deploy/docker/source-docker.sh proteus down --workload twitter &&
+bash deploy/docker/source-docker.sh proteus up --workload twitter
+bash deploy/docker/source-docker.sh proteus trace --workload twitter --dry-run
+bash deploy/docker/source-docker.sh proteus trace --workload twitter --limit 0
+bash deploy/docker/source-docker.sh proteus state --workload twitter
+bash deploy/docker/source-docker.sh proteus down --workload twitter
+
+# 급증 부하: 별도 프로파일·결과 경로에서 같은 준비 순서
+bash deploy/docker/source-docker.sh proteus build --workload bursty &&
+bash deploy/docker/source-docker.sh proteus setup --workload bursty &&
+bash deploy/docker/source-docker.sh proteus up --workload bursty &&
+bash deploy/docker/source-docker.sh proteus register --workload bursty
+bash deploy/docker/source-docker.sh proteus down --workload bursty &&
+bash deploy/docker/source-docker.sh proteus up --workload bursty
+bash deploy/docker/source-docker.sh proteus trace --workload bursty --dry-run
+bash deploy/docker/source-docker.sh proteus trace --workload bursty --limit 0
+bash deploy/docker/source-docker.sh proteus state --workload bursty
+bash deploy/docker/source-docker.sh proteus down --workload bursty
+```
+
+두 조건은 기존 MODEL_DIR의 가중치와 트레이스를 공유한다. 빌드 계층도 재사용한다.
+프로파일·결과·Compose 프로젝트는 기존 실험 및 두 워크로드 사이에서 분리된다. 같은 GPU에서는 한 번에 하나만 실행한다.
+모든 lifecycle 명령에 같은 `--workload`를 붙인다. 생략하면 기존 일반 실험의 설정·경로를 사용한다.
+기존 200ms 프로파일을 새 프리셋에 복사하지 말고 새 경로에서 register한다.
+JSON에는 원본 URL·해시·SLO 출처·실행 설정을, CSV에는 source_slo_ms와 실제 요청의 request_slo_ms를 기록한다.
+START_STATE=cold 기본값이면 측정 첫 요청의 실제 모델 로딩도 포함된다. 모델 다운로드·프로파일링은 측정 요청에 포함하지 않는다.
+미전송과 전송 지연도 함께 확인한다. 원본 요청이 모두 전송되지 않으면 같은 부하를 재현했다고 해석하지 않는다.
+
+기본 저장 경로:
+
+```text
+/data4tb/taeho-proteus/experiments/paired-resnet/proteus/source-v1/published-twitter/results/
+/data4tb/taeho-proteus/experiments/paired-resnet/proteus/source-v1/published-bursty/results/
+```
+
+DATA_DIR을 개인 설정에서 바꿨다면 그 경로 아래에 같은 하위 디렉터리를 만든다.
+
 ## 실행 순서
 
 기존 수정 파일이 있는 폴더는 그대로 두고 v1 커밋을 별도 폴더에서 실행한다.

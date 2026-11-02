@@ -37,7 +37,7 @@ def read_env(path):
     return result
 
 
-def settings(engine, root=ROOT):
+def settings(engine, root=ROOT, published_workload=None):
     root = Path(root).resolve()
     here = root / "experiments/resnet"
     if engine not in json.loads((here/"engines.json").read_text()):
@@ -51,6 +51,13 @@ def settings(engine, root=ROOT):
         values.update(updates)
     elif "RESNET_ENV" in os.environ:
         raise FileNotFoundError(local)
+    if published_workload is not None:
+        if engine != "proteus" or published_workload not in {"twitter", "bursty"}:
+            raise ValueError("Published workload presets currently support Proteus: twitter or bursty")
+        entry = json.loads((here/"traces.json").read_text())[published_workload]
+        # Explicit preset wins over old local 200-ms / 2x settings. Device,
+        # storage, preprocessing and native scheduling settings are preserved.
+        values.update(WORKLOAD=published_workload, SLO_MS=str(entry["source_slo_ms"]), TRACE_SPEED="1")
     phase = json.loads((here/"phase.json").read_text())
     if (phase["phase"] not in {"v1", "v2"}
             or phase["request_preprocessing"] is not (phase["phase"] == "v2")):
@@ -83,6 +90,10 @@ def settings(engine, root=ROOT):
                   WORKER_IMAGE=f"source-{engine}-resnet:{phase}",
                   PROJECT=f"source-{engine}-{phase}")
     values["RUN_DIR"] = str(Path(values["DATA_DIR"])/engine/("source-"+phase))
+    if published_workload is not None:
+        values["PUBLISHED_WORKLOAD"] = published_workload
+        values["PROJECT"] += "-"+published_workload
+        values["RUN_DIR"] = str(Path(values["RUN_DIR"])/("published-"+published_workload))
     values["MODEL_NAME"] = "resnet18_v1" if engine == "clipper" and values["CLIPPER_MODE"] == "ht" else (
         "resnet152_v1" if engine == "clipper" else "resnet50_v1")
     return values
@@ -190,6 +201,7 @@ def environment(c):
     interval = {"proteus": "PROTEUS_ALLOCATION_INTERVAL", "infaas-accuracy": "ACCURACY_ALLOCATION_INTERVAL",
                 "infaas": "INFAAS_ALLOCATION_INTERVAL", "clipper": "PROTEUS_ALLOCATION_INTERVAL"}[c["ENGINE"]]
     env.update(ALLOCATION_INTERVAL=c[interval], GPU_TYPE="v100", APPLICATION="imagenet", MODEL_DIR="/models",
+               WORKLOAD=c["WORKLOAD"], PUBLISHED_WORKLOAD=c.get("PUBLISHED_WORKLOAD", ""),
                HOST_GPU_INDEX=c["GPU"], QUERY_THREADS=c["QUERY_THREADS"],
                PROFILE_DIR="/profiles", MODEL_REGISTRY="/app/experiments/resnet/models.json",
                CLIPPER_MODEL_NAME=c["MODEL_NAME"], CLIPPER_MODEL_VERSION="1", CLIPPER_INPUT_TYPE="strings",
@@ -332,8 +344,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("engine", choices=["proteus", "infaas-accuracy", "infaas", "clipper"])
     parser.add_argument("action", choices=["settings", "compose", "build", "setup", "up", "down", "state", "register", "query", "trace", "reset", "logs"])
+    parser.add_argument("--workload", choices=["twitter", "bursty"],
+                        help="Proteus public trace preset: original arrival times and trace SLO; isolated output directory")
     args, extra = parser.parse_known_args(argv)
-    c = settings(args.engine)
+    c = settings(args.engine, published_workload=args.workload)
     if args.action == "settings":
         print(json.dumps(c, ensure_ascii=False, indent=2)); return
     if args.action == "compose":
