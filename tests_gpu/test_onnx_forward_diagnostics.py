@@ -69,6 +69,9 @@ def test_plan_uses_original_image_and_read_only_assets(tmp_path):
     assert not any("original-results" in mount for mount in bindings)
     assert "--cpu-quota" in command and "--cpu-period" in command
     assert diag.digest(profile)==diag.digest(tmp_path/"profiles/published-source-profiles.json")
+    shape_command,_,_,_=diag.launch_plan(info,tmp_path/"probe.py",tmp_path/"new-results",
+                                        args(batch_shapes_only=True))
+    assert "--batch-shapes-only" in shape_command
 
 
 @pytest.mark.parametrize("dry",[True,False])
@@ -135,3 +138,45 @@ def test_real_native_rpc_path_with_explicit_fake_gpu(tmp_path,monkeypatch,contex
         assert locations["context_before_imports"]==locations["context_after_imports"]
         assert locations["context_native_gpu_thread"]==locations["context_server_started"]==locations["context_after_rpc"]
     assert diag.digest(profile)==report["original_profile_sha256"]
+
+
+def test_shape_diagnostic_retains_every_switch_and_repeat_without_reloading(tmp_path):
+    from experiments.resnet.test_native_interfaces import fake_backend
+    runtime,jpeg=fake_backend()
+    runtime.session=None
+    runtime.torch=SimpleNamespace(cuda=SimpleNamespace(synchronize=lambda:None))
+    loads=[]
+    real_load=runtime.load
+    class Session:
+        def get_providers(self): return ["explicit-fake-no-gpu"]
+        def get_provider_options(self): return {}
+        def get_session_options(self):
+            return SimpleNamespace(intra_op_num_threads=2,inter_op_num_threads=1,
+                                   execution_mode="fake",graph_optimization_level="fake")
+    def load(name=None):
+        result=real_load(name)
+        loads.append(result["loaded"])
+        if result["loaded"]:
+            runtime.session=Session()
+        return result
+    runtime.load=load
+    profile=tmp_path/"profile.json"
+    profile.write_text(json.dumps({"fingerprint":runtime.fingerprint(),"batches":[1,2,4,8],
+        "profiles":{"resnet152_v1":{"batches":{str(b):{"samples_ms":[1,2]} for b in (1,2,4,8)}}}}))
+    original=profile.read_bytes()
+    report=diag.measure_batch_shapes(runtime,args(batches=[1,2,4,8]),profile,jpeg,[],tmp_path)
+    assert report["status"]=="complete"
+    assert loads==[True,False,False]
+    assert len({c["session_identity"] for c in report["contexts"]})==1
+    assert len({r["thread_id"] for r in report["rows"]})==1
+    for detailed in (False,True):
+        mixed=[r for r in report["rows"] if r["observer"]==detailed and r["case"]!="shape_fixed"]
+        # No per-shape warmup is silently discarded from the mixed sequence.
+        assert [r["batch"] for r in mixed]==[1,1,2,2,4,4,8,8]*2
+        previous=8  # final shape of the fixed-batch prewarming pass
+        for row in mixed:
+            assert row["previous_batch"]==previous
+            assert row["shape_changed"]==(previous!=row["batch"])
+            assert row["case"]==("shape_mixed_switch" if row["shape_changed"] else "shape_mixed_repeat")
+            previous=row["batch"]
+    assert profile.read_bytes()==original

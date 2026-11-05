@@ -79,6 +79,7 @@ class Recorder:
     def __init__(self):
         self.rows, self.local = [], threading.local()
         self.case, self.details, self.active = "warmup", False, False
+        self.tags = {}
 
     def call(self, name, function, *args, **kwargs):
         row = getattr(self.local, "row", None)
@@ -100,7 +101,8 @@ class Recorder:
             if not self.active:
                 return real_infer(prepared)
             row = {"case": self.case, "observer": self.details, "model": runtime.current,
-                   "batch": len(prepared), "thread_id": threading.get_native_id(), "stages": {}}
+                   "batch": len(prepared), "thread_id": threading.get_native_id(),
+                   **self.tags, "stages": {}}
             self.local.row = row
             wall, cpu, process = time.perf_counter_ns(), time.thread_time_ns(), time.process_time_ns()
             try:
@@ -212,6 +214,95 @@ def session_context(runtime):
         value["execution_mode"] = str(options.execution_mode)
         value["graph_optimization"] = str(options.graph_optimization_level)
     return value
+
+
+def measure_batch_shapes(runtime, args, profile_path, raw, arrivals, output):
+    """Isolate changes of N, without changing the session or CUDA options.
+
+    Every shape is warmed before the mixed sequence. Both calls of each pair
+    are measured: the first follows a different N, the second repeats that N.
+    Returning to an already warmed shape is deliberately not warmed again.
+    """
+    profiles = json.loads(profile_path.read_text())
+    if profiles["fingerprint"] != runtime.fingerprint():
+        raise RuntimeError("Saved profile/runtime fingerprint differs")
+    if len(set(args.batches)) < 2 or len(set(args.batches)) != len(args.batches):
+        raise ValueError("Shape diagnostic needs at least two distinct batches")
+    if any(batch not in profiles["batches"] for batch in args.batches):
+        raise ValueError("Diagnostic batches must already exist in the saved profile")
+    recorder = Recorder()
+    restore = recorder.attach(runtime)
+    prepared = runtime.prepare(raw)
+    report = {"status":"running", "mode":"batch-shape-isolation", "rows":recorder.rows,
+              "original_profile_sha256":digest(profile_path), "contexts":[],
+              "note":"Unchanged Runtime and CUDA provider options; no RPC, policy, reprofile, or session reload between shapes. Every mixed pair is measured; no switch cost is discarded."}
+
+    def run():
+        runtime.load(args.model)
+        real_session = runtime.session
+        for detailed in (False, True):
+            recorder.details, recorder.active = detailed, False
+            # Idempotent load only attaches/detaches the observer. A new ONNX
+            # session here would invalidate the previously-warmed-shape test.
+            runtime.load(args.model)
+            session = runtime.session.real if isinstance(runtime.session, SessionProbe) else runtime.session
+            if session is not real_session:
+                raise RuntimeError("ONNX session changed during shape diagnostic")
+            context = {"observer":detailed, **session_context(runtime),
+                       "ort_version":getattr(getattr(runtime,"ort",None),"__version__",None),
+                       "session_identity":id(session)}
+            try:
+                context["loaded_cudnn_libraries"] = sorted({line.split()[-1]
+                    for line in Path("/proc/self/maps").read_text().splitlines()
+                    if "/libcudnn" in line})
+            except OSError:
+                context["loaded_cudnn_libraries"] = []
+            report["contexts"].append(context)
+            print("SHAPE CONTEXT "+json.dumps(context), flush=True)
+            previous = None
+            for batch in args.batches:
+                recorder.case = "shape_fixed"
+                for _ in range(3):
+                    runtime.infer_prepared([prepared]*batch)
+                previous = batch
+                recorder.active = True
+                try:
+                    for index in range(args.trials):
+                        recorder.tags = {"previous_batch":previous, "shape_changed":False,
+                                         "sequence_index":index}
+                        runtime.infer_prepared([prepared]*batch)
+                finally:
+                    recorder.active = False
+            # Every batch has been used in this SAME session above. This tests
+            # whether returning to a known shape still incurs a transition cost.
+            recorder.active = True
+            try:
+                for cycle in range(args.trials):
+                    for batch in args.batches:
+                        for pair_index in range(2):
+                            changed = batch != previous
+                            recorder.case = "shape_mixed_switch" if changed else "shape_mixed_repeat"
+                            recorder.tags = {"previous_batch":previous, "shape_changed":changed,
+                                             "cycle":cycle, "pair_index":pair_index}
+                            runtime.infer_prepared([prepared]*batch)
+                            previous = batch
+            finally:
+                recorder.active = False
+                recorder.tags = {}
+
+    try:
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="diag-shape-gpu") as pool:
+            pool.submit(run).result()
+            pool.submit(runtime.reset).result()
+        report["status"] = "complete"
+    except BaseException as error:
+        report["status"], report["error"] = "failed", repr(error)
+        raise
+    finally:
+        recorder.active = False
+        restore()
+        finish_report(report, recorder, profiles, output)
+    return report
 
 
 def measure_context(runtime, args, profile_path, raw, arrivals, output):
@@ -452,6 +543,8 @@ def launch_plan(inspect, script, output, args):
                 "--batches", ",".join(map(str, args.batches)), "--gaps-ms", ",".join(map(str, args.gaps_ms))]
     if getattr(args, "context_only", False):
         command += ["--context-only"]
+    if getattr(args, "batch_shapes_only", False):
+        command += ["--batch-shapes-only"]
     return command, name, gpu, Path(mounts["/profiles"]["Source"])/"published-source-profiles.json"
 
 
@@ -536,7 +629,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
-    p.add_argument("--context-only", action="store_true", help="Compare imports, native GPU thread, direct submit, and gRPC using the same session")
+    modes = p.add_mutually_exclusive_group()
+    modes.add_argument("--context-only", action="store_true", help="Compare imports, native GPU thread, direct submit, and gRPC using the same session")
+    modes.add_argument("--batch-shapes-only", action="store_true", help="Compare fixed batches with consecutive switch/repeat pairs in one unchanged ONNX session; no RPC")
     p.add_argument("--model", default="resnet152")
     p.add_argument("--trials", type=int, default=10)
     p.add_argument("--trace-limit", type=int, default=100)
@@ -553,6 +648,8 @@ def main():
         p.error("trials=2..100, trace-limit=0..3776, nonempty batches/gaps required")
     if any(b not in (1,2,4,8) for b in args.batches) or any(not 0 <= g <= 1000 for g in args.gaps_ms):
         p.error("batches=1,2,4,8 and finite gaps=0..1000ms required")
+    if args.batch_shapes_only and (len(set(args.batches))<2 or len(set(args.batches))!=len(args.batches)):
+        p.error("--batch-shapes-only needs at least two distinct batches")
     if args.worker:
         from experiments.resnet.runtime import Runtime
         from experiments.resnet.client import read_trace, validate_published_trace
@@ -563,7 +660,7 @@ def main():
         arrivals = arrivals[:args.trace_limit] if args.trace_limit else []
         runtime = Runtime()
         try:
-            operation = measure_context if args.context_only else measure
+            operation = measure_batch_shapes if args.batch_shapes_only else measure_context if args.context_only else measure
             operation(runtime, args, Path("/profiles/published-source-profiles.json"), raw, arrivals, Path("/results"))
         finally:
             runtime.reset()

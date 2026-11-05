@@ -71,6 +71,44 @@ bash deploy/docker/diagnose-forward.sh --context-only
 이 모드도 같은 원래 컨테이너의 종료·복원과 프로파일 SHA256 검사를 수행한다.
 결과는 forward-diagnostic.json, context_submit_no_grpc.json, context_grpc.json에 저장한다.
 
+### 같은 세션에서 배치 크기 변경 비용 확인
+
+두 번째 진단에서는 같은 실제 GPU 스레드·세션의 직접 실행이 약 7ms였지만,
+gRPC를 거치지 않고 원래 submit·큐·배치 경로를 사용해도 약 170ms였다.
+서버 시작·단순 import·스레드 수 차이·gRPC 통신만으로는 이 차이가 설명되지 않았다.
+직접 검사는 같은 배치를 반복하고 서빙에서는 배치 크기가 바뀐다는 차이를 다음과 같이 분리한다.
+
+```bash
+git fetch origin refs/heads/v1 &&
+git checkout --detach FETCH_HEAD
+
+bash deploy/docker/diagnose-forward.sh --batch-shapes-only --batches 1,2,4,8 --dry-run
+bash deploy/docker/diagnose-forward.sh --batch-shapes-only --batches 1,2,4,8
+```
+
+새 빌드·register 없이 원래 이미지·모델·프로파일·CUDA provider 설정을 사용한다.
+세션 하나와 GPU 호출 스레드 하나를 유지하고, RPC·큐·정책을 실행하지 않는 직접 검사다.
+이 모드도 원래 워커만 종료했다가 복원하므로 메모리의 누적 통계·상주 상태는 초기화된다.
+
+| case | 측정 조건 |
+|---|---|
+| shape_fixed | 배치별 워밍업 3회 후 같은 배치 10회 반복. 저장 프로파일과 같은 방식 |
+| shape_mixed_switch | 모든 배치를 이미 사용한 같은 세션에서 다른 크기로 바뀐 첫 호출 |
+| shape_mixed_repeat | 바뀐 크기로 첫 호출을 마친 직후 같은 크기의 두 번째 호출 |
+
+혼합 순서는 `1,1,2,2,4,4,8,8`을 기본 10회 반복한다. 혼합 구간은 첫 호출도 버리지 않고 모두 기록한다.
+상세 관측 off/on을 각각 측정하며, 두 조건에서도 같은 ONNX 세션을 유지한다.
+결과 JSON에는 이전 배치·현재 배치·변경 여부·cycle·pair_index·세션 identity와 로드된 cuDNN 라이브러리 경로를 기록한다.
+
+`switch`만 약 150~170ms이고 `repeat`는 프로파일 수준이면 배치 크기 변경 비용이 직접 실행에서도 재현된 것이다.
+두 조건 모두 빠르면 이 가설만으로 설명할 수 없으므로 원래 큐·정책과의 동시 실행 영향을 다음으로 확인한다.
+두 조건 모두 느리거나 관측 off/on 차이가 크면 해당 결과를 먼저 검토한다.
+
+코드 근거: [ONNX Runtime 1.22.0 conv.cc](https://github.com/microsoft/onnxruntime/blob/v1.22.0/onnxruntime/core/providers/cuda/nn/conv.cc#L301)에서
+cuDNN 9 경로는 입력 차원이 변경되면 `CreateCudnnFeExecutionPlan()`을 호출하여 실행 계획을 다시 구성한다.
+배치 크기 N도 입력 차원에 포함된다. `EXHAUSTIVE`라는 설정명만으로 실제 알고리즘 벤치마크가 매번 수행된다고 단정하지 않는다.
+실제 라이브러리 버전·변경/반복 결과를 함께 확인하며, 진단 단계에서는 provider 옵션이나 기존 배치 정책을 바꾸지 않는다.
+
 ## 관측값과 해석
 
 | 관측값 | 의미 |
