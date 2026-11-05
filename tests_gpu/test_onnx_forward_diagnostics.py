@@ -105,7 +105,8 @@ def test_dry_run_is_read_only_and_worker_failure_restores_original(tmp_path,monk
         assert json.loads((tmp_path/"profiles/published-source-profiles.json").read_text())=={"test":"original"}
 
 
-def test_real_native_rpc_path_with_explicit_fake_gpu(tmp_path,monkeypatch):
+@pytest.mark.parametrize("context",[False,True])
+def test_real_native_rpc_path_with_explicit_fake_gpu(tmp_path,monkeypatch,context):
     from experiments.resnet.test_native_interfaces import fake_backend
     from experiments.reproduce.proteus_executor import Executor
     runtime,jpeg=fake_backend()
@@ -119,12 +120,18 @@ def test_real_native_rpc_path_with_explicit_fake_gpu(tmp_path,monkeypatch):
         executor.close()
     monkeypatch.setenv("ALLOCATION_INTERVAL","60")
     monkeypatch.setenv("RPC_THREADS","4")
-    report=diag.measure(runtime,args(),profile,jpeg,[(1,1,300),(400,1,300)],tmp_path)
+    operation=diag.measure_context if context else diag.measure
+    report=operation(runtime,args(),profile,jpeg,[(1,1,300),(400,1,300)],tmp_path)
     assert report["status"]=="complete"
-    assert {row["observer"] for row in report["rows"]}=={False,True}
-    assert any(row["case"]=="native_rpc_twitter" for row in report["rows"])
-    for mode in (0,1):
-        data=json.loads((tmp_path/f"rpc-observer-{mode}.json").read_text())
+    assert {row["observer"] for row in report["rows"]}==({True} if context else {False,True})
+    assert any(row["case"]==("context_grpc" if context else "native_rpc_twitter") for row in report["rows"])
+    names = ("context_grpc.json","context_submit_no_grpc.json") if context else ("rpc-observer-0.json","rpc-observer-1.json")
+    for name in names:
+        data=json.loads((tmp_path/name).read_text())
         assert data["summary"]["sent_requests"]==2
         assert data["summary"]["successful_replies"]==2
+    if context:
+        locations={r["case"]:r["thread_id"] for r in report["contexts"]}
+        assert locations["context_before_imports"]==locations["context_after_imports"]
+        assert locations["context_native_gpu_thread"]==locations["context_server_started"]==locations["context_after_rpc"]
     assert diag.digest(profile)==report["original_profile_sha256"]

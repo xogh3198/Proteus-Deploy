@@ -186,6 +186,139 @@ def summarize(rows, profiles):
     return result
 
 
+def finish_report(report, recorder, profiles, output):
+    report["summary"] = summarize(recorder.rows, profiles)
+    (output/"forward-diagnostic.json").write_text(json.dumps(report, indent=2))
+    print("case / observer / model / batch / calls / profile-P50 / actual-P50-P95 / thread-CPU-P50 / process-CPU-P50 (ms)", flush=True)
+    for item in report["summary"]:
+        print(f"{item['case']} / {int(item['observer'])} / {item['model'].removesuffix('_v1')} / {item['batch']} / {item['batch_calls']} / "
+              f"{item['saved_profile_p50_ms']:.2f} / {item['wall_ms']['p50']:.2f}-{item['wall_ms']['p95']:.2f} / "
+              f"{item['thread_cpu_ms']['p50']:.2f} / {item['process_cpu_ms']['p50']:.2f}", flush=True)
+        for name, stage in item["stages"].items():
+            print(f"  {name}: wall-P50={stage['wall_ms']:.3f}, CPU-P50={stage['thread_cpu_ms']:.3f}", flush=True)
+        if item["observer"]:
+            print(f"  outside_observed_APIs: wall-P50={item['outside_api_wall_p50_ms']:.3f}", flush=True)
+
+
+def session_context(runtime):
+    value = {"thread_id": threading.get_native_id(), "model": runtime.current,
+             "torch_intra_threads": getattr(runtime.torch, "get_num_threads", lambda:None)(),
+             "torch_inter_threads": getattr(runtime.torch, "get_num_interop_threads", lambda:None)()}
+    if runtime.session is not None:
+        value["providers"] = runtime.session.get_providers()
+        value["provider_options"] = runtime.session.get_provider_options()
+        options = runtime.session.get_session_options()
+        value["ort_threads"] = [options.intra_op_num_threads, options.inter_op_num_threads]
+        value["execution_mode"] = str(options.execution_mode)
+        value["graph_optimization"] = str(options.graph_optimization_level)
+    return value
+
+
+def measure_context(runtime, args, profile_path, raw, arrivals, output):
+    """Keep the same native GPU thread/session when bypassing vs using RPC."""
+    profiles = json.loads(profile_path.read_text())
+    if profiles["fingerprint"] != runtime.fingerprint():
+        raise RuntimeError("Saved profile/runtime fingerprint differs")
+    if any(batch not in profiles["batches"] for batch in args.batches):
+        raise ValueError("Diagnostic batches must already exist in the saved profile")
+    recorder = Recorder()
+    recorder.details = True
+    restore = recorder.attach(runtime)
+    report = {"status":"running", "mode":"context-isolation", "rows":recorder.rows, "contexts":[],
+              "original_profile_sha256":digest(profile_path),
+              "note":"Same image, model, input and original native policies; API wall/CPU times are not pure CUDA kernel durations."}
+    executor = server = channel = None
+    prepared = runtime.prepare(raw)
+
+    def batches(case):
+        recorder.case, recorder.active = case, False
+        context = {"case":case, **session_context(runtime),
+                   "input_shape":list(prepared["inputs"]["pixel_values"].shape),
+                   "input_dtype":str(prepared["inputs"]["pixel_values"].dtype)}
+        report["contexts"].append(context)
+        print("CONTEXT "+json.dumps(context), flush=True)
+        for batch in args.batches:
+            for _ in range(3):
+                runtime.infer_prepared([prepared]*batch)
+            recorder.active = True
+            try:
+                for _ in range(args.trials):
+                    runtime.infer_prepared([prepared]*batch)
+            finally:
+                recorder.active = False
+
+    def exclusive(function):
+        deadline = time.monotonic()+15
+        while True:
+            try:
+                return executor._exclusive(function)
+            except ValueError as error:
+                if ("Wait for original Ilp" not in str(error) and "Administrative operation requires" not in str(error)) or time.monotonic()>=deadline:
+                    raise
+                time.sleep(.01)
+
+    try:
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="diag-context-gpu") as pool:
+            pool.submit(runtime.load, args.model).result()
+            pool.submit(batches, "context_before_imports").result()
+            import grpc
+            from experiments.reproduce.proteus_executor import Executor
+            from experiments.resnet.client import Client, replay, summary
+            from proteus_realtime.protocol import InferRequest, InferReply, INFER_METHOD
+            from proteus_realtime.server import create_server
+            # Same direct thread, new session: isolate native/RPC module imports.
+            pool.submit(runtime.reset).result()
+            pool.submit(runtime.load, args.model).result()
+            pool.submit(batches, "context_after_imports").result()
+            pool.submit(runtime.reset).result()
+        executor = Executor(runtime, "proteus", profile_path=profile_path, slo=profiles["slo_ms"],
+                            batches=profiles["batches"], interval=float(os.environ["ALLOCATION_INTERVAL"]))
+        if not executor.state()["policy_ready"]:
+            raise RuntimeError("Original native policy is not ready")
+        exclusive(lambda:runtime.load(args.model))
+        exclusive(lambda:batches("context_native_gpu_thread"))
+        server, port = create_server(executor, "127.0.0.1:0", int(os.environ["RPC_THREADS"]))
+        server.start()
+        exclusive(lambda:batches("context_server_started"))
+        channel = grpc.insecure_channel(f"127.0.0.1:{port}")
+        grpc.channel_ready_future(channel).result(timeout=10)
+        network_rpc = channel.unary_unary(INFER_METHOD, request_serializer=InferRequest.SerializeToString,
+                                         response_deserializer=InferReply.FromString)
+        if arrivals:
+            for network in (False, True):
+                recorder.case = "context_grpc" if network else "context_submit_no_grpc"
+                client = Client.__new__(Client)
+                client.engine, client.timeout, client.Request = "proteus", 10, InferRequest
+                client.rpc = network_rpc if network else lambda request,timeout:executor.submit(request).result(timeout=timeout)
+                print("START "+recorder.case, flush=True)
+                recorder.active = True
+                try:
+                    rows, elapsed = replay(client, raw, arrivals, profiles["slo_ms"], 1, 256, use_trace_slo=True)
+                finally:
+                    recorder.active = False
+                result = summary(rows, arrivals[-1][0]/1000, profiles["slo_ms"])
+                result["elapsed_seconds"] = elapsed
+                (output/(recorder.case+".json")).write_text(json.dumps({"summary":result,"rows":rows},indent=2))
+                if not result["successful_replies"]:
+                    raise RuntimeError("No inference completed in "+recorder.case)
+        exclusive(lambda:batches("context_after_rpc"))
+        report["status"] = "complete"
+    except BaseException as error:
+        report["status"], report["error"] = "failed", repr(error)
+        raise
+    finally:
+        recorder.active = False
+        if channel is not None:
+            channel.close()
+        if server is not None:
+            server.stop(5).wait()
+        if executor is not None:
+            executor.close()
+        restore()
+        finish_report(report, recorder, profiles, output)
+    return report
+
+
 def rpc_case(runtime, recorder, profile_path, raw, arrivals, output, detailed):
     import grpc
     from experiments.reproduce.proteus_executor import Executor
@@ -277,17 +410,7 @@ def measure(runtime, args, profile_path, raw, arrivals, output):
     finally:
         recorder.active = False
         restore()
-        report["summary"] = summarize(recorder.rows, profiles)
-        (output/"forward-diagnostic.json").write_text(json.dumps(report, indent=2))
-        print("case / observer / model / batch / calls / profile-P50 / actual-P50-P95 / thread-CPU-P50 / process-CPU-P50 (ms)", flush=True)
-        for item in report["summary"]:
-            print(f"{item['case']} / {int(item['observer'])} / {item['model'].removesuffix('_v1')} / {item['batch']} / {item['batch_calls']} / "
-                  f"{item['saved_profile_p50_ms']:.2f} / {item['wall_ms']['p50']:.2f}-{item['wall_ms']['p95']:.2f} / "
-                  f"{item['thread_cpu_ms']['p50']:.2f} / {item['process_cpu_ms']['p50']:.2f}", flush=True)
-            for name, stage in item["stages"].items():
-                print(f"  {name}: wall-P50={stage['wall_ms']:.3f}, CPU-P50={stage['thread_cpu_ms']:.3f}", flush=True)
-            if item["observer"]:
-                print(f"  outside_observed_APIs: wall-P50={item['outside_api_wall_p50_ms']:.3f}", flush=True)
+        finish_report(report, recorder, profiles, output)
     return report
 
 
@@ -295,7 +418,7 @@ def docker_status(container):
     program = ("import grpc,json; c=grpc.insecure_channel('127.0.0.1:9000'); "
                "f=c.unary_unary('/paired.resnet.Admin/Status',request_serializer=lambda x:json.dumps(x).encode(),"
                "response_deserializer=json.loads); print(json.dumps(f({},timeout=10)))")
-    return json.loads(subprocess.check_output(["docker", "exec", container, "python", "-c", program], text=True))
+    return json.loads(subprocess.check_output(["docker", "exec", container, "python", "-c", program], text=True, stderr=subprocess.PIPE))
 
 
 def launch_plan(inspect, script, output, args):
@@ -327,6 +450,8 @@ def launch_plan(inspect, script, output, args):
     command += [inspect["Image"], "python", "/diagnostics/onnx_forward.py", "--worker", "--model", args.model,
                 "--trials", str(args.trials), "--trace-limit", str(args.trace_limit),
                 "--batches", ",".join(map(str, args.batches)), "--gaps-ms", ",".join(map(str, args.gaps_ms))]
+    if getattr(args, "context_only", False):
+        command += ["--context-only"]
     return command, name, gpu, Path(mounts["/profiles"]["Source"])/"published-source-profiles.json"
 
 
@@ -411,6 +536,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--context-only", action="store_true", help="Compare imports, native GPU thread, direct submit, and gRPC using the same session")
     p.add_argument("--model", default="resnet152")
     p.add_argument("--trials", type=int, default=10)
     p.add_argument("--trace-limit", type=int, default=100)
@@ -437,7 +563,8 @@ def main():
         arrivals = arrivals[:args.trace_limit] if args.trace_limit else []
         runtime = Runtime()
         try:
-            measure(runtime, args, Path("/profiles/published-source-profiles.json"), raw, arrivals, Path("/results"))
+            operation = measure_context if args.context_only else measure
+            operation(runtime, args, Path("/profiles/published-source-profiles.json"), raw, arrivals, Path("/results"))
         finally:
             runtime.reset()
     else:

@@ -45,6 +45,32 @@ bash deploy/docker/diagnose-forward.sh
 bash deploy/docker/diagnose-forward.sh --batches 1,2,4,8 --trials 20
 ```
 
+### 직접 실행은 빠르고 RPC에서만 느린 경우의 추가 진단
+
+2026-11-05 첫 진단에서는 300ms idle 뒤 직접 배치 1 실행이 약 8ms, RPC 실행은 약 170ms였다.
+RPC의 추가 시간은 ort_run에 집중됐고, 같은 호출 스레드의 CPU 시간도 약 170ms였다.
+이 단계에서는 네트워크·단순 idle 간격·결과 복사·마지막 synchronize 중 하나를 원인으로 단정하지 않는다.
+아래 추가 모드로 모듈 import, 세션·스레드, 동시 작업, gRPC의 영향을 나눠 확인한다.
+
+```bash
+bash deploy/docker/diagnose-forward.sh --context-only --dry-run
+bash deploy/docker/diagnose-forward.sh --context-only
+```
+
+| case | 비교하는 조건 |
+|---|---|
+| context_before_imports / context_after_imports | 같은 직접 실행 스레드에서 native/RPC 모듈 import 전후에 세션을 새로 만들어 측정 |
+| context_native_gpu_thread | 실제 Executor의 GPU 스레드·세션에서 관리용 exclusive 경로로 직접 추론 |
+| context_server_started | 같은 세션·GPU 스레드에서 gRPC 서버만 시작하고 요청 전송 전 측정 |
+| context_submit_no_grpc | 원래 submit·큐·적응형 배치를 실행하되 gRPC 통신을 거치지 않음 |
+| context_grpc | 같은 Executor·세션에 원래 gRPC 프로토콜로 요청 전송 |
+| context_after_rpc | RPC 종료 후 같은 GPU 스레드·세션의 직접 실행을 다시 측정 |
+
+각 조건의 thread ID, Torch 스레드 설정, ORT 세션의 스레드 수·provider/options·입력 형상을 기록한다.
+모델 후보·원래 모델 선택 함수·배치 함수·기존 프로파일은 변경하지 않는다.
+이 모드도 같은 원래 컨테이너의 종료·복원과 프로파일 SHA256 검사를 수행한다.
+결과는 forward-diagnostic.json, context_submit_no_grpc.json, context_grpc.json에 저장한다.
+
 ## 관측값과 해석
 
 | 관측값 | 의미 |
