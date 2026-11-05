@@ -30,6 +30,7 @@ CSV 입력은 원래 로더의 50th_pct 매핑을 유지한다. 실제 반복 �
 모델은 공개 ONNX ResNet-v1 18·34·50·101·152 FP32, 실행은 ONNX Runtime CUDA EP다.
 터미널의 모델 이름은 resnet18·resnet34·resnet50·resnet101·resnet152로 표시한다.
 설정·정책·프로파일과 저장되는 JSON/CSV는 원본 식별자(resnet18_v1 등)를 유지한다. 이름 표시는 가중치나 정책을 바꾸지 않는다.
+프로파일과 실제 forward 시간이 크게 다르면 [별도 ONNX 원인 진단](../../diagnostics/README.md)을 사용한다. 원래 워커 이미지와 읽기 전용 프로파일로 실행하며 rebuild/register가 필요하지 않다.
 정확한 원 논문 checkpoint는 식별되지 않았으며 models.json의 checkpoint 출처·점수 차이를 기록한다.
 v1은 Proteus의 추상 입력에 대응하는 미리 준비한 텐서를 사용한다. 실제 추론·H2D·결과 회수는 요청마다 실행한다.
 
