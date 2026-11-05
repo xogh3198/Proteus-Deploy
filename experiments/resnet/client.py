@@ -16,24 +16,13 @@ import urllib.error
 import urllib.request
 import uuid
 
-from .assets import manifest
+from .assets import display_model_names, manifest
 from experiments.reproduce.metrics import add_boundaries, boundary_report
 
 
 def print_report(value):
     """Use short console names without changing policy IDs or saved results."""
-    names = {name: name.removesuffix("_v1") for name in manifest()["models"]}
-
-    def display(item):
-        if isinstance(item, dict):
-            return {names.get(key, key): display(value) for key, value in item.items()}
-        if isinstance(item, list):
-            return [display(value) for value in item]
-        if isinstance(item, str):
-            return names.get(item, item)
-        return item
-
-    print(json.dumps(display(value), indent=2))
+    print(json.dumps(display_model_names(value), indent=2))
 
 
 def http(url, payload=None, timeout=10):

@@ -63,6 +63,7 @@ docker info --format '{{.DockerRootDir}}'
 
 # Twitter: 처음 한 번 빌드·입력 준비·프로파일링
 bash deploy/docker/source-docker.sh proteus settings --workload twitter
+bash deploy/docker/source-docker.sh proteus down --workload twitter
 bash deploy/docker/source-docker.sh proteus build --workload twitter &&
 bash deploy/docker/source-docker.sh proteus setup --workload twitter &&
 bash deploy/docker/source-docker.sh proteus up --workload twitter &&
@@ -77,6 +78,7 @@ bash deploy/docker/source-docker.sh proteus state --workload twitter
 bash deploy/docker/source-docker.sh proteus down --workload twitter
 
 # 급증 부하: 별도 프로파일·결과 경로에서 같은 준비 순서
+bash deploy/docker/source-docker.sh proteus down --workload bursty
 bash deploy/docker/source-docker.sh proteus build --workload bursty &&
 bash deploy/docker/source-docker.sh proteus setup --workload bursty &&
 bash deploy/docker/source-docker.sh proteus up --workload bursty &&
@@ -96,6 +98,11 @@ bash deploy/docker/source-docker.sh proteus down --workload bursty
 JSON에는 원본 URL·해시·SLO 출처·실행 설정을, CSV에는 source_slo_ms와 실제 요청의 request_slo_ms를 기록한다.
 START_STATE=cold 기본값이면 측정 첫 요청의 실제 모델 로딩도 포함된다. 모델 다운로드·프로파일링은 측정 요청에 포함하지 않는다.
 미전송과 전송 지연도 함께 확인한다. 원본 요청이 모두 전송되지 않으면 같은 부하를 재현했다고 해석하지 않는다.
+
+이미 register가 끝나 policy_ready=true인 워커에서는 build/setup/up/register를 반복하지 않고 아래 trace 검증·측정으로 이어간다.
+`This experiment is already running`은 같은 Compose 프로젝트의 중복 시작을 막았다는 뜻이다.
+코드를 갱신하거나 재빌드할 때는 위의 workload별 down을 먼저 실행한다. 이 명령은 가중치·프로파일·결과를 삭제하지 않는다.
+실행 중인 서비스는 자동 종료·교체하지 않는다.
 
 기본 저장 경로:
 

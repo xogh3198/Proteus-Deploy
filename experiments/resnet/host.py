@@ -305,7 +305,10 @@ def up(c):
     info = docker_info(c)
     verify_build(c)
     if run(["docker", "ps", "-q", "--filter", "label=com.docker.compose.project="+c["PROJECT"]], True):
-        raise RuntimeError("This experiment is already running; use state or down first")
+        command = "bash deploy/docker/source-docker.sh "+c["ENGINE"]
+        option = " --workload "+c["PUBLISHED_WORKLOAD"] if c.get("PUBLISHED_WORKLOAD") else ""
+        raise RuntimeError("This experiment is already running. Check it with '"+command+" state"+option+
+                           "'. Before rebuilding or starting fresh, run '"+command+" down"+option+"' first.")
     name = run(["nvidia-smi", "-i", c["GPU"], "--query-gpu=name", "--format=csv,noheader"], True)
     if "V100" not in name:
         raise RuntimeError("Selected GPU is not a V100")
@@ -349,7 +352,8 @@ def main(argv=None):
     args, extra = parser.parse_known_args(argv)
     c = settings(args.engine, published_workload=args.workload)
     if args.action == "settings":
-        print(json.dumps(c, ensure_ascii=False, indent=2)); return
+        from .assets import display_model_names
+        print(json.dumps(display_model_names(c), ensure_ascii=False, indent=2)); return
     if args.action == "compose":
         print(json.dumps(compose_spec(c), indent=2)); return
     if args.action in {"build", "setup", "up"}:

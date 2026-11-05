@@ -109,7 +109,7 @@ def main():
     add_admin(server, executor, runtime, engine)
     server.start()
     print(json.dumps({"ready": True, "engine": engine, "phase": runtime.preparation.phase,
-                      "dtype": "fp32", "models": runtime.enabled}), flush=True)
+                      "dtype": "fp32", "models": [name.removesuffix("_v1") for name in runtime.enabled]}), flush=True)
     def stop(*_):
         server.stop(5)
     signal.signal(signal.SIGTERM, stop)

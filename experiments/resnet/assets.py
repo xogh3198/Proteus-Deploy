@@ -18,6 +18,22 @@ def manifest():
     return data
 
 
+def display_model_names(value):
+    """Return console aliases while keeping original identifiers in the input."""
+    names = {name: name.removesuffix("_v1") for name in manifest()["models"]}
+
+    def display(item):
+        if isinstance(item, dict):
+            return {names.get(key, key): display(value) for key, value in item.items()}
+        if isinstance(item, list):
+            return [display(value) for value in item]
+        if isinstance(item, str):
+            return names.get(item, item)
+        return item
+
+    return display(value)
+
+
 def sha256(path):
     h = hashlib.sha256()
     with Path(path).open("rb") as stream:
@@ -87,7 +103,7 @@ def acquire(root, fetch=False):
                 except FileExistsError:
                     check_model(target, entry)
         verified[name] = check_model(target, entry)
-        print(f"{name}: verified FP32 checkpoint {entry['sha256'][:12]}", flush=True)
+        print(f"{name.removesuffix('_v1')}: verified FP32 checkpoint {entry['sha256'][:12]}", flush=True)
     return verified
 
 
@@ -96,7 +112,8 @@ def main(argv=None):
     parser.add_argument("action", choices=["download", "verify"])
     parser.add_argument("--root", type=Path, required=True)
     args = parser.parse_args(argv)
-    print(json.dumps(acquire(args.root, args.action == "download"), indent=2))
+    verified = acquire(args.root, args.action == "download")
+    print(json.dumps(display_model_names(verified), indent=2))
 
 
 if __name__ == "__main__":
