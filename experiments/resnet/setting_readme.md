@@ -99,6 +99,8 @@ bash deploy/docker/source-docker.sh proteus down --workload bursty
 ## 논문이 인용한 ORT 1.8.1에서 V100 검증
 
 `--runtime ort181`은 공식 Linux x86-64 GPU 바이너리와 CUDA 11.0.3·cuDNN 8 기반의 별도 이미지를 사용한다.
+빌드는 NVIDIA 패키지의 SHA256을 확인하고 필요한 헤더와 공유 라이브러리만 추출한다.
+공유 라이브러리는 약 2GiB이며 Docker에 다운로드와 이미지 레이어를 만들 여유 공간이 추가로 필요하다.
 Python 3.11 서빙 어댑터는 C API를 통해 단일 ONNX 세션을 실행한다. PyTorch의 CPU 패키지는 기존 전처리 및 스레드 설정에 사용한다.
 가중치와 트레이스는 공용 캐시에서 읽고, 프로파일·결과·Compose 프로젝트는 `-ort181` 경로를 사용한다.
 이 프리셋은 v1 Proteus의 공개 Twitter와 bursty 워크로드에서 사용할 수 있다.
