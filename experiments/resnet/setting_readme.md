@@ -95,6 +95,45 @@ bash deploy/docker/source-docker.sh proteus down --workload bursty
 두 조건은 기존 MODEL_DIR의 가중치와 트레이스를 공유한다. 빌드 계층도 재사용한다.
 프로파일·결과·Compose 프로젝트는 기존 실험 및 두 워크로드 사이에서 분리된다. 같은 GPU에서는 한 번에 하나만 실행한다.
 모든 lifecycle 명령에 같은 `--workload`를 붙인다. 생략하면 기존 일반 실험의 설정·경로를 사용한다.
+
+## 논문이 인용한 ORT 1.8.1에서 V100 검증
+
+`--runtime ort181`은 공식 Linux x86-64 GPU 바이너리와 CUDA 11.0.3·cuDNN 8 기반의 별도 이미지를 사용한다.
+Python 3.11 서빙 어댑터는 C API를 통해 단일 ONNX 세션을 실행한다. PyTorch의 CPU 패키지는 기존 전처리 및 스레드 설정에 사용한다.
+가중치와 트레이스는 공용 캐시에서 읽고, 프로파일·결과·Compose 프로젝트는 `-ort181` 경로를 사용한다.
+이 프리셋은 v1 Proteus의 공개 Twitter와 bursty 워크로드에서 사용할 수 있다.
+
+```bash
+cmd=(bash deploy/docker/source-docker.sh proteus)
+legacy=(--workload twitter --runtime ort181)
+"${cmd[@]}" settings "${legacy[@]}"
+"${cmd[@]}" build "${legacy[@]}" &&
+"${cmd[@]}" setup "${legacy[@]}"
+
+# 기존 Twitter 워커가 같은 GPU를 쓰는 경우에만 종료한다.
+"${cmd[@]}" down --workload twitter
+"${cmd[@]}" probe "${legacy[@]}" --model resnet152 --trials 10
+```
+
+`probe`는 ORT/CUDA/cuDNN 버전과 입력·가중치 식별자를 저장한다. 고정 배치와
+`1,1,2,2,4,4,8,8` 반복 실행에서 배치 전환 및 반복 P50·P95를 따로 보고한다.
+`results/batch-probe-*.json`에는 실제 반복 샘플도 저장된다. 프로파일은 아래 `register`에서 새로 만든다.
+probe 결과를 확인한 뒤 같은 이미지에서 트레이스를 실행한다.
+
+```bash
+"${cmd[@]}" up "${legacy[@]}" &&
+"${cmd[@]}" register "${legacy[@]}" &&
+"${cmd[@]}" down "${legacy[@]}" &&
+"${cmd[@]}" up "${legacy[@]}" &&
+"${cmd[@]}" trace "${legacy[@]}" --dry-run &&
+"${cmd[@]}" trace "${legacy[@]}" --limit 0
+"${cmd[@]}" state "${legacy[@]}"
+"${cmd[@]}" down "${legacy[@]}"
+```
+
+스케줄러에는 기존대로 V100 실측 `50th_pct`가 들어간다. probe의 전환 시간은 진단 데이터다.
+공개 설정의 기본 MILP 주기는 10초이며 논문 §6.1.5의 클러스터 설정은 30초다.
+이 결과의 범위는 공개 Proteus 정책을 V100 한 장과 ResNet 트레이스로 실행한 실험이다.
 기존 200ms 프로파일을 새 프리셋에 복사하지 말고 새 경로에서 register한다.
 JSON에는 원본 URL·해시·SLO 출처·실행 설정을, CSV에는 source_slo_ms와 실제 요청의 request_slo_ms를 기록한다.
 START_STATE=cold 기본값이면 측정 첫 요청의 실제 모델 로딩도 포함된다. 모델 다운로드·프로파일링은 측정 요청에 포함하지 않는다.

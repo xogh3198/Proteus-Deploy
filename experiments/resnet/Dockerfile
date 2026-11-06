@@ -1,10 +1,12 @@
 FROM python:3.11-slim-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/*
-RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu126 \
-    torch==2.11.0+cu126 torchvision==0.26.0+cu126
+ARG TORCH_VARIANT=cu126
+RUN python -m pip install --no-cache-dir --index-url "https://download.pytorch.org/whl/${TORCH_VARIANT}" \
+    "torch==2.11.0+${TORCH_VARIANT}" "torchvision==0.26.0+${TORCH_VARIANT}"
 COPY experiments/resnet/requirements.txt /opt/requirements.txt
-RUN python -m pip install --no-cache-dir -r /opt/requirements.txt
+RUN if [ "$TORCH_VARIANT" = cpu ]; then sed -i '/^onnxruntime-gpu==/d' /opt/requirements.txt; fi \
+    && python -m pip install --no-cache-dir -r /opt/requirements.txt
 WORKDIR /app
 COPY experiments/resnet /app/experiments/resnet
 COPY experiments/reproduce /app/experiments/reproduce

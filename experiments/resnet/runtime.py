@@ -18,26 +18,33 @@ from .preparation import Preparation
 class Runtime:
     def __init__(self):
         import torch
-        import onnxruntime as ort
-        if hasattr(ort, "preload_dlls"):
-            ort.preload_dlls(cuda=True, cudnn=True, msvc=False)
-        if not torch.cuda.is_available() or "CUDAExecutionProvider" not in ort.get_available_providers():
-            raise RuntimeError("A working CUDA device and ONNX CUDAExecutionProvider are required")
-        self.torch, self.ort = torch, ort
+        self.torch = torch
+        self.legacy_ort = None
+        if os.environ.get("PROTEUS_ORT181_BRIDGE"):
+            from .legacy_ort import LegacyOrt
+            self.legacy_ort = LegacyOrt()
+        else:
+            import onnxruntime as ort
+            if hasattr(ort, "preload_dlls"):
+                ort.preload_dlls(cuda=True, cudnn=True, msvc=False)
+            if not torch.cuda.is_available() or "CUDAExecutionProvider" not in ort.get_available_providers():
+                raise RuntimeError("A working CUDA device and ONNX CUDAExecutionProvider are required")
+            self.ort = ort
         torch.set_num_threads(int(os.environ.get("CPU_THREADS", "2")))
         torch.set_num_interop_threads(int(os.environ.get("CPU_INTEROP_THREADS", "1")))
-        torch.backends.cuda.matmul.allow_tf32 = False
-        torch.backends.cudnn.allow_tf32 = False
-        self.device_name = torch.cuda.get_device_name(0)
+        self.device_name = self.cuda.get_device_name(0)
         if "V100" not in self.device_name:
             raise ValueError("The paired experiment requires the selected V100")
         # CUDA initialization is distinct from checkpoint loading and done before requests.
-        probe = torch.ones((2, 2), device="cuda", dtype=torch.float32)
-        if (probe @ probe)[0, 0].item() != 2:
-            raise RuntimeError("CUDA math check failed")
-        torch.cuda.synchronize()
-        del probe
-        torch.cuda.empty_cache()
+        if self.legacy_ort is None:
+            torch.backends.cuda.matmul.allow_tf32 = False
+            torch.backends.cudnn.allow_tf32 = False
+            probe = torch.ones((2, 2), device="cuda", dtype=torch.float32)
+            if (probe @ probe)[0, 0].item() != 2:
+                raise RuntimeError("CUDA math check failed")
+            self.cuda.synchronize()
+            del probe
+            self.cuda.empty_cache()
         self.root = Path(os.environ.get("MODEL_DIR", "/models"))
         self.verified = acquire(self.root)
         self.registry = manifest()["models"]
@@ -58,8 +65,12 @@ class Runtime:
         self.warmups = int(os.environ.get("WARMUP_QUERIES", "10"))
         self.loads = deque(maxlen=4096)
         self.load_count = self.switch_count = self.forward_count = 0
-        self.memory_baseline_free = int(torch.cuda.mem_get_info()[0])
+        self.memory_baseline_free = int(self.cuda.mem_get_info()[0])
         self.load_stages = {}
+
+    @property
+    def cuda(self):
+        return self.legacy_ort or self.torch.cuda
 
     def prepare(self, raw):
         return self.preparation.prepare(raw)
@@ -67,13 +78,16 @@ class Runtime:
     def _forward(self, array):
         if self.session is None:
             raise RuntimeError("No GPU model is resident")
-        binding = self.session.io_binding()
-        array = np.ascontiguousarray(array, dtype=np.float32)
-        binding.bind_cpu_input(self.input_name, array)
-        binding.bind_output(self.output_name, "cuda", 0)
-        self.session.run_with_iobinding(binding)
-        result = binding.copy_outputs_to_cpu()[0]
-        self.torch.cuda.synchronize()
+        if self.legacy_ort is not None:
+            result = self.session.run(np.ascontiguousarray(array, dtype=np.float32))
+        else:
+            binding = self.session.io_binding()
+            array = np.ascontiguousarray(array, dtype=np.float32)
+            binding.bind_cpu_input(self.input_name, array)
+            binding.bind_output(self.output_name, "cuda", 0)
+            self.session.run_with_iobinding(binding)
+            result = binding.copy_outputs_to_cpu()[0]
+        self.cuda.synchronize()
         if result.shape != (len(array), 1000) or not np.isfinite(result).all():
             raise RuntimeError("Expected finite ImageNet-1k inference outputs")
         self.forward_count += 1
@@ -88,20 +102,29 @@ class Runtime:
                 return {"loaded": False, "load_ms": 0.0, "ready_ms": 0.0, "stages": {}}
             before, started = self.current, time.perf_counter()
             self.reset()
-            options = self.ort.SessionOptions()
-            options.intra_op_num_threads = self.torch.get_num_threads()
-            options.inter_op_num_threads = self.torch.get_num_interop_threads()
-            session = self.ort.InferenceSession(str(self.root / self.registry[name]["file"]),
-                sess_options=options, providers=[("CUDAExecutionProvider", {"device_id": 0, "use_tf32": 0})])
-            session.disable_fallback()
-            if session.get_providers()[0] != "CUDAExecutionProvider":
-                raise RuntimeError("Refusing CPU-only inference fallback")
-            self.session, self.current = session, name
-            self.input_name = session.get_inputs()[0].name
-            self.output_name = session.get_outputs()[0].name
-            ready = time.perf_counter()
-            for _ in range(self.warmups):
-                self._forward(self.preparation.fixture["inputs"]["pixel_values"])
+            path = self.root / self.registry[name]["file"]
+            try:
+                if self.legacy_ort is not None:
+                    self.session = self.legacy_ort.open(path, self.torch.get_num_threads(),
+                                                       self.torch.get_num_interop_threads())
+                else:
+                    options = self.ort.SessionOptions()
+                    options.intra_op_num_threads = self.torch.get_num_threads()
+                    options.inter_op_num_threads = self.torch.get_num_interop_threads()
+                    self.session = self.ort.InferenceSession(str(path), sess_options=options,
+                        providers=[("CUDAExecutionProvider", {"device_id": 0, "use_tf32": 0})])
+                    self.session.disable_fallback()
+                    if self.session.get_providers()[0] != "CUDAExecutionProvider":
+                        raise RuntimeError("Refusing CPU-only inference fallback")
+                    self.input_name = self.session.get_inputs()[0].name
+                    self.output_name = self.session.get_outputs()[0].name
+                ready = time.perf_counter()
+                for _ in range(self.warmups):
+                    self._forward(self.preparation.fixture["inputs"]["pixel_values"])
+            except Exception:
+                self.session = None
+                raise
+            self.current = name
             end = time.perf_counter()
             self.load_count += 1
             self.switch_count += int(before is not None and before != name)
@@ -136,16 +159,22 @@ class Runtime:
 
     def reset(self):
         with self.gpu_lock:
-            self.torch.cuda.synchronize()
+            self.cuda.synchronize()
             self.session = self.current = None
             gc.collect()
-            self.torch.cuda.empty_cache()
+            if self.legacy_ort is None:
+                self.cuda.empty_cache()
 
     def fingerprint(self):
-        return {"runtime": "onnxruntime-cuda-resnet", "dtype": "fp32", "gpu": self.device_name,
-                "cuda": self.torch.version.cuda,
-                "versions": {p: importlib.metadata.version(p) for p in
-                             ("onnxruntime-gpu", "onnx", "torch", "transformers", "pillow", "numpy")},
+        versions = {p: importlib.metadata.version(p) for p in
+                    ("onnx", "torch", "transformers", "pillow", "numpy")}
+        native = {"runtime": "onnxruntime-cuda-resnet", "cuda": self.torch.version.cuda}
+        if self.legacy_ort is not None:
+            versions["onnxruntime-gpu"] = self.legacy_ort.version
+            native = {"runtime": "onnxruntime-1.8.1-c-api-resnet", **self.legacy_ort.versions()}
+        else:
+            versions["onnxruntime-gpu"] = importlib.metadata.version("onnxruntime-gpu")
+        return {**native, "dtype": "fp32", "gpu": self.device_name, "versions": versions,
                 "checkpoints": self.verified, "phase": self.preparation.phase,
                 "preprocessing_contract": self.preprocess_contract,
                 "fixture_sha256": self.preparation.fixture_sha256,

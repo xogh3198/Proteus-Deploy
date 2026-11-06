@@ -37,7 +37,7 @@ def read_env(path):
     return result
 
 
-def settings(engine, root=ROOT, published_workload=None):
+def settings(engine, root=ROOT, published_workload=None, runtime="ort122"):
     root = Path(root).resolve()
     here = root / "experiments/resnet"
     if engine not in json.loads((here/"engines.json").read_text()):
@@ -94,6 +94,14 @@ def settings(engine, root=ROOT, published_workload=None):
         values["PUBLISHED_WORKLOAD"] = published_workload
         values["PROJECT"] += "-"+published_workload
         values["RUN_DIR"] = str(Path(values["RUN_DIR"])/("published-"+published_workload))
+    if runtime == "ort181":
+        if engine != "proteus" or phase != "v1" or published_workload is None:
+            raise ValueError("ORT 1.8.1 requires the v1 Proteus public Twitter or bursty workload")
+        values["ORT_RUNTIME"] = runtime
+        for key in ("WORKER_IMAGE", "PROJECT", "RUN_DIR"):
+            values[key] += "-ort181"
+    elif runtime != "ort122":
+        raise ValueError("Unknown ONNX Runtime preset: "+runtime)
     values["MODEL_NAME"] = "resnet18_v1" if engine == "clipper" and values["CLIPPER_MODE"] == "ht" else (
         "resnet152_v1" if engine == "clipper" else "resnet50_v1")
     return values
@@ -183,7 +191,14 @@ def build(c):
                  "-t", image, "-f", "dockerfiles/"+dockerfile, "."])
         run(["docker", "pull", "redis:6.2-alpine"])
         images += core_images()
-    run(["docker", "build", "-t", c["WORKER_IMAGE"], "-f", "experiments/resnet/Dockerfile", "."])
+    if c.get("ORT_RUNTIME") == "ort181":
+        base = c["WORKER_IMAGE"]+"-base"
+        run(["docker", "build", "--build-arg", "TORCH_VARIANT=cpu", "-t", base,
+             "-f", "experiments/resnet/Dockerfile", "."])
+        run(["docker", "build", "--build-arg", "RESNET_BASE="+base, "-t", c["WORKER_IMAGE"],
+             "experiments/resnet/ort181"])
+    else:
+        run(["docker", "build", "-t", c["WORKER_IMAGE"], "-f", "experiments/resnet/Dockerfile", "."])
     output = manifest_path(c)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps({"source_sha256": source_fingerprint(c),
@@ -301,20 +316,44 @@ def setup(c):
     print("Assets prepared. No GPU inference or workload was run.")
 
 
-def up(c):
-    info = docker_info(c)
-    verify_build(c)
-    if run(["docker", "ps", "-q", "--filter", "label=com.docker.compose.project="+c["PROJECT"]], True):
-        command = "bash deploy/docker/source-docker.sh "+c["ENGINE"]
-        option = " --workload "+c["PUBLISHED_WORKLOAD"] if c.get("PUBLISHED_WORKLOAD") else ""
-        raise RuntimeError("This experiment is already running. Check it with '"+command+" state"+option+
-                           "'. Before rebuilding or starting fresh, run '"+command+" down"+option+"' first.")
+def require_idle_v100(c):
     name = run(["nvidia-smi", "-i", c["GPU"], "--query-gpu=name", "--format=csv,noheader"], True)
     if "V100" not in name:
         raise RuntimeError("Selected GPU is not a V100")
     processes = run(["nvidia-smi", "-i", c["GPU"], "--query-compute-apps=pid,process_name", "--format=csv,noheader"], True)
     if processes:
         raise RuntimeError("Selected GPU has compute processes. No existing service was stopped:\n"+processes)
+
+
+def probe(c, extra):
+    info = docker_info(c)
+    verify_build(c)
+    require_idle_v100(c)
+    if not Path(c["INPUT_IMAGE"]).is_file() or not Path(c["MODEL_DIR"]).is_dir():
+        raise FileNotFoundError("Run setup before probe")
+    (Path(c["RUN_DIR"])/"results").mkdir(parents=True, exist_ok=True)
+    command = ["docker", "run", "--rm", "--network", "none", "--gpus", "device="+c["GPU"],
+               "--user", docker_user(info)]
+    for key, value in environment(c).items():
+        command += ["-e", key+"="+value]
+    for mount in mounts(c):
+        if mount["target"] != "/profiles":
+            command += ["--mount", "type=bind,src="+mount["source"]+",dst="+mount["target"]+
+                        (",readonly" if mount.get("read_only") else "")]
+    return run([*command, c["WORKER_IMAGE"], "python", "-m", "experiments.resnet.batch_probe", *extra])
+
+
+def up(c):
+    info = docker_info(c)
+    verify_build(c)
+    if run(["docker", "ps", "-q", "--filter", "label=com.docker.compose.project="+c["PROJECT"]], True):
+        command = "bash deploy/docker/source-docker.sh "+c["ENGINE"]
+        option = " --workload "+c["PUBLISHED_WORKLOAD"] if c.get("PUBLISHED_WORKLOAD") else ""
+        if c.get("ORT_RUNTIME"):
+            option += " --runtime "+c["ORT_RUNTIME"]
+        raise RuntimeError("This experiment is already running. Check it with '"+command+" state"+option+
+                           "'. Before rebuilding or starting fresh, run '"+command+" down"+option+"' first.")
+    require_idle_v100(c)
     if not Path(c["INPUT_IMAGE"]).is_file():
         raise FileNotFoundError("Run setup before up")
     for directory in ("profiles", "results"):
@@ -346,11 +385,13 @@ def up(c):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("engine", choices=["proteus", "infaas-accuracy", "infaas", "clipper"])
-    parser.add_argument("action", choices=["settings", "compose", "build", "setup", "up", "down", "state", "register", "query", "trace", "reset", "logs"])
+    parser.add_argument("action", choices=["settings", "compose", "build", "setup", "probe", "up", "down", "state", "register", "query", "trace", "reset", "logs"])
     parser.add_argument("--workload", choices=["twitter", "bursty"],
                         help="Proteus public trace preset: original arrival times and trace SLO; isolated output directory")
+    parser.add_argument("--runtime", choices=["ort122", "ort181"], default="ort122",
+                        help="ORT 1.8.1 runs in a separate v1 Proteus image and result directory")
     args, extra = parser.parse_known_args(argv)
-    c = settings(args.engine, published_workload=args.workload)
+    c = settings(args.engine, published_workload=args.workload, runtime=args.runtime)
     if args.action == "settings":
         from .assets import display_model_names
         print(json.dumps(display_model_names(c), ensure_ascii=False, indent=2)); return
@@ -358,6 +399,10 @@ def main(argv=None):
         print(json.dumps(compose_spec(c), indent=2)); return
     if args.action in {"build", "setup", "up"}:
         return {"build": build, "setup": setup, "up": up}[args.action](c)
+    if args.action == "probe":
+        if args.engine != "proteus" or args.workload is None:
+            raise ValueError("Probe requires a public Proteus workload preset")
+        return probe(c, extra)
     if args.action == "down":
         docker_info(c)
         path = Path(c["RUN_DIR"])/"compose.json"

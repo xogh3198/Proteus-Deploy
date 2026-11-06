@@ -68,6 +68,19 @@ def test_presets_override_old_slo_and_speed_but_preserve_device_and_storage(tmp_
     assert host.settings("proteus") == original
 
 
+def test_legacy_profile_and_results_are_isolated_from_the_public_baseline():
+    baseline = host.settings("proteus", published_workload="twitter")
+    legacy = host.settings("proteus", published_workload="twitter", runtime="ort181")
+    for key in ("PROJECT", "WORKER_IMAGE", "RUN_DIR"):
+        assert legacy[key] == baseline[key] + "-ort181"
+    for key in baseline.keys() - {"PROJECT", "WORKER_IMAGE", "RUN_DIR"}:
+        assert legacy[key] == baseline[key]
+    baseline_paths = {row["source"] for row in host.mounts(baseline) if not row.get("read_only")}
+    legacy_paths = {row["source"] for row in host.mounts(legacy) if not row.get("read_only")}
+    assert baseline_paths.isdisjoint(legacy_paths)
+    assert host.environment(legacy)["ALLOCATION_INTERVAL"] == host.environment(baseline)["ALLOCATION_INTERVAL"]
+
+
 def test_replay_sends_trace_deadline_instead_of_the_old_experiment_deadline():
     received = []
     class Recorder:
